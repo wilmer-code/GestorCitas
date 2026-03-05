@@ -1,0 +1,180 @@
+const express = require('express');
+const { z } = require('zod');
+const prisma = require('../lib/prisma');
+const validate = require('../middleware/validate');
+
+const router = express.Router();
+
+const appointmentSchema = z.object({
+  clientId: z.number().int().positive(),
+  startAt: z.string().datetime(),
+  endAt: z.string().datetime(),
+  status: z.enum(['scheduled', 'completed', 'cancelled']).optional()
+});
+
+const businessStartHour = 9;
+const businessEndHour = 18;
+
+function isWithinBusinessHours(start, end) {
+  const startMinutes = start.getHours() * 60 + start.getMinutes();
+  const endMinutes = end.getHours() * 60 + end.getMinutes();
+  return startMinutes >= businessStartHour * 60 && endMinutes <= businessEndHour * 60;
+}
+
+async function ensureClientOwnership(clientId, userId) {
+  const client = await prisma.client.findFirst({ where: { id: clientId, userId } });
+  return !!client;
+}
+
+async function hasOverlap(userId, startAt, endAt, excludeId) {
+  // Anti-solapes: start < existing.end && end > existing.start
+  const overlap = await prisma.appointment.findFirst({
+    where: {
+      userId,
+      status: { not: 'cancelled' },
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+      startAt: { lt: endAt },
+      endAt: { gt: startAt }
+    }
+  });
+
+  return !!overlap;
+}
+
+router.get('/', async (req, res) => {
+  const start = req.query.start ? new Date(req.query.start) : null;
+  const end = req.query.end ? new Date(req.query.end) : null;
+
+  const appointments = await prisma.appointment.findMany({
+    where: {
+      userId: req.user.id,
+      ...(start || end
+        ? {
+            startAt: {
+              ...(start ? { gte: start } : {}),
+              ...(end ? { lte: end } : {})
+            }
+          }
+        : {})
+    },
+    include: {
+      client: true,
+      reminders: true
+    },
+    orderBy: { startAt: 'asc' }
+  });
+
+  res.json(appointments);
+});
+
+router.post('/', validate(appointmentSchema), async (req, res) => {
+  const { clientId, startAt, endAt, status } = req.validatedBody;
+  const startDate = new Date(startAt);
+  const endDate = new Date(endAt);
+
+  if (startDate >= endDate) {
+    return res.status(400).json({ message: 'La hora de fin debe ser mayor que la de inicio' });
+  }
+
+  if (!isWithinBusinessHours(startDate, endDate)) {
+    return res.status(400).json({ message: 'Fuera de horario permitido (09:00-18:00)' });
+  }
+
+  const ownsClient = await ensureClientOwnership(clientId, req.user.id);
+  if (!ownsClient) {
+    return res.status(404).json({ message: 'Cliente no encontrado' });
+  }
+
+  const overlap = await hasOverlap(req.user.id, startDate, endDate);
+  if (overlap) {
+    return res.status(409).json({ message: 'Existe solape con otra cita del usuario' });
+  }
+
+  const appointment = await prisma.appointment.create({
+    data: {
+      userId: req.user.id,
+      clientId,
+      startAt: startDate,
+      endAt: endDate,
+      status: status || 'scheduled'
+    },
+    include: { client: true, reminders: true }
+  });
+
+  res.status(201).json(appointment);
+});
+
+router.get('/:id', async (req, res) => {
+  const id = Number(req.params.id);
+
+  const appointment = await prisma.appointment.findFirst({
+    where: { id, userId: req.user.id },
+    include: { client: true, reminders: true }
+  });
+
+  if (!appointment) {
+    return res.status(404).json({ message: 'Cita no encontrada' });
+  }
+
+  res.json(appointment);
+});
+
+router.put('/:id', validate(appointmentSchema.partial()), async (req, res) => {
+  const id = Number(req.params.id);
+  const current = await prisma.appointment.findFirst({
+    where: { id, userId: req.user.id }
+  });
+
+  if (!current) {
+    return res.status(404).json({ message: 'Cita no encontrada' });
+  }
+
+  const nextClientId = req.validatedBody.clientId ?? current.clientId;
+  const nextStart = req.validatedBody.startAt ? new Date(req.validatedBody.startAt) : current.startAt;
+  const nextEnd = req.validatedBody.endAt ? new Date(req.validatedBody.endAt) : current.endAt;
+
+  if (nextStart >= nextEnd) {
+    return res.status(400).json({ message: 'La hora de fin debe ser mayor que la de inicio' });
+  }
+
+  if (!isWithinBusinessHours(nextStart, nextEnd)) {
+    return res.status(400).json({ message: 'Fuera de horario permitido (09:00-18:00)' });
+  }
+
+  const ownsClient = await ensureClientOwnership(nextClientId, req.user.id);
+  if (!ownsClient) {
+    return res.status(404).json({ message: 'Cliente no encontrado' });
+  }
+
+  const overlap = await hasOverlap(req.user.id, nextStart, nextEnd, id);
+  if (overlap) {
+    return res.status(409).json({ message: 'Existe solape con otra cita del usuario' });
+  }
+
+  const appointment = await prisma.appointment.update({
+    where: { id },
+    data: {
+      clientId: nextClientId,
+      startAt: nextStart,
+      endAt: nextEnd,
+      ...(req.validatedBody.status ? { status: req.validatedBody.status } : {})
+    },
+    include: { client: true, reminders: true }
+  });
+
+  res.json(appointment);
+});
+
+router.delete('/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const exists = await prisma.appointment.findFirst({ where: { id, userId: req.user.id } });
+
+  if (!exists) {
+    return res.status(404).json({ message: 'Cita no encontrada' });
+  }
+
+  await prisma.appointment.delete({ where: { id } });
+  res.status(204).send();
+});
+
+module.exports = router;
