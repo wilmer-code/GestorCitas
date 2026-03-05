@@ -44,10 +44,18 @@ async function hasOverlap(userId, startAt, endAt, excludeId) {
 router.get('/', async (req, res) => {
   const start = req.query.start ? new Date(req.query.start) : null;
   const end = req.query.end ? new Date(req.query.end) : null;
+  const clientId = req.query.clientId ? Number(req.query.clientId) : null;
+  const status = req.query.status ? req.query.status.toString() : null;
+
+  if (status && !['scheduled', 'completed', 'cancelled'].includes(status)) {
+    return res.status(400).json({ message: 'Estado inválido' });
+  }
 
   const appointments = await prisma.appointment.findMany({
     where: {
       userId: req.user.id,
+      ...(clientId ? { clientId } : {}),
+      ...(status ? { status } : {}),
       ...(start || end
         ? {
             startAt: {

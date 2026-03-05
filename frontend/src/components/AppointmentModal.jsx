@@ -15,9 +15,15 @@ export default function AppointmentModal({
   appointment,
   onSave,
   onCreateReminder,
+  onCancelAppointment,
   error
 }) {
-  const { register, handleSubmit, reset } = useForm({
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors }
+  } = useForm({
     defaultValues: {
       clientId: '',
       startAt: '',
@@ -57,18 +63,73 @@ export default function AppointmentModal({
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded shadow p-4 w-full max-w-md space-y-3">
         <h3 className="font-semibold">{appointment ? 'Editar cita' : 'Nueva cita'}</h3>
-        <form className="space-y-3" onSubmit={handleSubmit(submit)}>
-          <select className="w-full border rounded p-2" {...register('clientId')}>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <input className="w-full border rounded p-2" type="datetime-local" {...register('startAt')} required />
-          <input className="w-full border rounded p-2" type="number" min="15" step="15" {...register('duration')} required />
-          {error && <p className="text-red-600 text-sm">{error}</p>}
+        <form className="space-y-3" onSubmit={handleSubmit(submit)} noValidate>
+          <div>
+            <label htmlFor="clientId" className="block text-sm font-medium mb-1">
+              Cliente
+            </label>
+            <select
+              id="clientId"
+              className="w-full border rounded p-2"
+              {...register('clientId', { required: 'Selecciona un cliente' })}
+            >
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            {errors.clientId && <p className="text-red-600 text-sm">{errors.clientId.message}</p>}
+          </div>
+
+          <div>
+            <label htmlFor="startAt" className="block text-sm font-medium mb-1">
+              Fecha y hora de inicio
+            </label>
+            <input
+              id="startAt"
+              className="w-full border rounded p-2"
+              type="datetime-local"
+              {...register('startAt', { required: 'La fecha y hora son obligatorias' })}
+            />
+            {errors.startAt && <p className="text-red-600 text-sm">{errors.startAt.message}</p>}
+          </div>
+
+          <div>
+            <label htmlFor="duration" className="block text-sm font-medium mb-1">
+              Duración (minutos)
+            </label>
+            <input
+              id="duration"
+              className="w-full border rounded p-2"
+              type="number"
+              min="15"
+              step="15"
+              {...register('duration', {
+                required: 'La duración es obligatoria',
+                min: { value: 15, message: 'Mínimo 15 minutos' },
+                max: { value: 480, message: 'Máximo 480 minutos' }
+              })}
+            />
+            {errors.duration && <p className="text-red-600 text-sm">{errors.duration.message}</p>}
+          </div>
+
+          {error && (
+            <p className="text-red-600 text-sm" aria-live="polite">
+              {error}
+            </p>
+          )}
+
           <div className="flex gap-2 justify-end">
+            {appointment && appointment.status !== 'cancelled' && (
+              <button
+                type="button"
+                className="border border-red-300 text-red-700 rounded px-3 py-2"
+                onClick={() => onCancelAppointment(appointment.id)}
+              >
+                Cancelar cita
+              </button>
+            )}
             <button type="button" className="border rounded px-3 py-2" onClick={onClose}>
               Cerrar
             </button>
@@ -79,20 +140,35 @@ export default function AppointmentModal({
         {appointment && (
           <div className="border-t pt-3 space-y-2">
             <p className="text-sm font-medium">Crear recordatorio</p>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <button
+                className="bg-emerald-600 text-white rounded px-3 py-2 text-sm"
+                onClick={() => onCreateReminder(appointment.id, 1440)}
+                type="button"
+              >
+                +24h
+              </button>
+              <button
+                className="bg-emerald-600 text-white rounded px-3 py-2 text-sm"
+                onClick={() => onCreateReminder(appointment.id, 120)}
+                type="button"
+              >
+                +2h
+              </button>
               <input
                 type="number"
                 min="1"
                 className="border rounded p-2 w-32"
                 value={offset}
                 onChange={(e) => setOffset(Number(e.target.value))}
+                aria-label="Offset manual en minutos"
               />
               <button
                 className="bg-emerald-600 text-white rounded px-3 py-2"
                 onClick={() => onCreateReminder(appointment.id, offset)}
                 type="button"
               >
-                Crear (-min)
+                Crear manual
               </button>
             </div>
           </div>
