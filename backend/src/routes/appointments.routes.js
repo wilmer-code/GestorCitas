@@ -25,9 +25,14 @@ const madridTimeFormatter = new Intl.DateTimeFormat('es-ES', {
 
 function toMadridMinutes(date) {
   const hhmm = madridTimeFormatter.format(date);
-  const [hoursRaw = '', minutesRaw = ''] = hhmm.split(':');
-  const hour = Number(hoursRaw.trim());
-  const minute = Number(minutesRaw.trim());
+  const match = hhmm.match(/(\d{1,2})\D+(\d{2})/);
+
+  if (!match) {
+    return Number.NaN;
+  }
+
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
 
   if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
     return Number.NaN;
