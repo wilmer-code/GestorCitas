@@ -12,13 +12,28 @@ const appointmentSchema = z.object({
   status: z.enum(['scheduled', 'completed', 'cancelled']).optional()
 });
 
-const businessStartHour = 9;
-const businessEndHour = 18;
+const BUSINESS_TIMEZONE = 'Europe/Madrid';
+const businessStartMinutes = 10 * 60; // 10:00
+const businessEndMinutes = 20 * 60 + 30; // 20:30
+
+const madridTimeFormatter = new Intl.DateTimeFormat('es-ES', {
+  timeZone: BUSINESS_TIMEZONE,
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23'
+});
+
+function toMadridMinutes(date) {
+  const parts = madridTimeFormatter.formatToParts(date);
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
+  const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
+  return hour * 60 + minute;
+}
 
 function isWithinBusinessHours(start, end) {
-  const startMinutes = start.getHours() * 60 + start.getMinutes();
-  const endMinutes = end.getHours() * 60 + end.getMinutes();
-  return startMinutes >= businessStartHour * 60 && endMinutes <= businessEndHour * 60;
+  const startMinutes = toMadridMinutes(start);
+  const endMinutes = toMadridMinutes(end);
+  return startMinutes >= businessStartMinutes && endMinutes <= businessEndMinutes;
 }
 
 async function ensureClientOwnership(clientId, userId) {
@@ -46,8 +61,9 @@ router.get('/', async (req, res) => {
   const end = req.query.end ? new Date(req.query.end) : null;
   const clientId = req.query.clientId ? Number(req.query.clientId) : null;
   const status = req.query.status ? req.query.status.toString() : null;
+  const normalizedStatus = status === 'done' ? 'completed' : status;
 
-  if (status && !['scheduled', 'completed', 'cancelled'].includes(status)) {
+  if (status && !['scheduled', 'done', 'cancelled'].includes(status)) {
     return res.status(400).json({ message: 'Estado inválido' });
   }
 
@@ -55,7 +71,7 @@ router.get('/', async (req, res) => {
     where: {
       userId: req.user.id,
       ...(clientId ? { clientId } : {}),
-      ...(status ? { status } : {}),
+      ...(normalizedStatus ? { status: normalizedStatus } : {}),
       ...(start || end
         ? {
             startAt: {
@@ -85,7 +101,7 @@ router.post('/', validate(appointmentSchema), async (req, res) => {
   }
 
   if (!isWithinBusinessHours(startDate, endDate)) {
-    return res.status(400).json({ message: 'Fuera de horario permitido (09:00-18:00)' });
+    return res.status(400).json({ message: 'Fuera de horario permitido (10:00-20:30)' });
   }
 
   const ownsClient = await ensureClientOwnership(clientId, req.user.id);
@@ -146,7 +162,7 @@ router.put('/:id', validate(appointmentSchema.partial()), async (req, res) => {
   }
 
   if (!isWithinBusinessHours(nextStart, nextEnd)) {
-    return res.status(400).json({ message: 'Fuera de horario permitido (09:00-18:00)' });
+    return res.status(400).json({ message: 'Fuera de horario permitido (10:00-20:30)' });
   }
 
   const ownsClient = await ensureClientOwnership(nextClientId, req.user.id);
