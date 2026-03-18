@@ -23,16 +23,70 @@ const madridTimeFormatter = new Intl.DateTimeFormat('es-ES', {
   hourCycle: 'h23'
 });
 
+function lastSundayOfMonthUtc(year, monthIndex) {
+  const lastDayUtc = new Date(Date.UTC(year, monthIndex + 1, 0));
+  const dayOfWeek = lastDayUtc.getUTCDay();
+  lastDayUtc.setUTCDate(lastDayUtc.getUTCDate() - dayOfWeek);
+  return lastDayUtc;
+}
+
+function madridOffsetMinutes(date) {
+  const year = date.getUTCFullYear();
+  const dstStart = lastSundayOfMonthUtc(year, 2); // marzo
+  const dstEnd = lastSundayOfMonthUtc(year, 9); // octubre
+
+  dstStart.setUTCHours(1, 0, 0, 0); // 01:00 UTC
+  dstEnd.setUTCHours(1, 0, 0, 0); // 01:00 UTC
+
+  return date >= dstStart && date < dstEnd ? 120 : 60;
+}
+
 function toMadridMinutes(date) {
-  const parts = madridTimeFormatter.formatToParts(date);
-  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
-  const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
-  return hour * 60 + minute;
+  const resolvedTimeZone = madridTimeFormatter.resolvedOptions().timeZone;
+
+  if (resolvedTimeZone === BUSINESS_TIMEZONE) {
+    const formatted = madridTimeFormatter.format(date);
+    const [hoursRaw, minutesRaw] = formatted.split(':');
+    const hour = Number(hoursRaw);
+    const minute = Number(minutesRaw);
+
+    if (Number.isFinite(hour) && Number.isFinite(minute)) {
+      return hour * 60 + minute;
+    }
+  }
+
+  // Fallback si Intl no respeta Europe/Madrid en runtime (ICU limitado / imagen minimal)
+  const fallbackDate = new Date(date.getTime() + madridOffsetMinutes(date) * 60000);
+  return fallbackDate.getUTCHours() * 60 + fallbackDate.getUTCMinutes();
+}
+
+function logBusinessHoursDebug(context, start, end) {
+  const startFormatted = madridTimeFormatter.format(start);
+  const endFormatted = madridTimeFormatter.format(end);
+  const startMinutes = toMadridMinutes(start);
+  const endMinutes = toMadridMinutes(end);
+  const resolvedTimeZone = madridTimeFormatter.resolvedOptions().timeZone;
+
+  console.log('[appointments:business-hours]', {
+    context,
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+    startMadrid: startFormatted,
+    endMadrid: endFormatted,
+    startMinutes,
+    endMinutes,
+    resolvedTimeZone
+  });
 }
 
 function isWithinBusinessHours(start, end) {
   const startMinutes = toMadridMinutes(start);
   const endMinutes = toMadridMinutes(end);
+
+  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) {
+    return false;
+  }
+
   return startMinutes >= businessStartMinutes && endMinutes <= businessEndMinutes;
 }
 
@@ -100,6 +154,8 @@ router.post('/', validate(appointmentSchema), async (req, res) => {
     return res.status(400).json({ message: 'La hora de fin debe ser mayor que la de inicio' });
   }
 
+  logBusinessHoursDebug('POST', startDate, endDate);
+
   if (!isWithinBusinessHours(startDate, endDate)) {
     return res.status(400).json({ message: 'Fuera de horario permitido (10:00-20:30)' });
   }
@@ -160,6 +216,8 @@ router.put('/:id', validate(appointmentSchema.partial()), async (req, res) => {
   if (nextStart >= nextEnd) {
     return res.status(400).json({ message: 'La hora de fin debe ser mayor que la de inicio' });
   }
+
+  logBusinessHoursDebug('PUT', nextStart, nextEnd);
 
   if (!isWithinBusinessHours(nextStart, nextEnd)) {
     return res.status(400).json({ message: 'Fuera de horario permitido (10:00-20:30)' });
