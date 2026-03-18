@@ -23,41 +23,17 @@ const madridTimeFormatter = new Intl.DateTimeFormat('es-ES', {
   hourCycle: 'h23'
 });
 
-function lastSundayOfMonthUtc(year, monthIndex) {
-  const lastDayUtc = new Date(Date.UTC(year, monthIndex + 1, 0));
-  const dayOfWeek = lastDayUtc.getUTCDay();
-  lastDayUtc.setUTCDate(lastDayUtc.getUTCDate() - dayOfWeek);
-  return lastDayUtc;
-}
-
-function madridOffsetMinutes(date) {
-  const year = date.getUTCFullYear();
-  const dstStart = lastSundayOfMonthUtc(year, 2); // marzo
-  const dstEnd = lastSundayOfMonthUtc(year, 9); // octubre
-
-  dstStart.setUTCHours(1, 0, 0, 0); // 01:00 UTC
-  dstEnd.setUTCHours(1, 0, 0, 0); // 01:00 UTC
-
-  return date >= dstStart && date < dstEnd ? 120 : 60;
-}
-
 function toMadridMinutes(date) {
-  const resolvedTimeZone = madridTimeFormatter.resolvedOptions().timeZone;
+  const hhmm = madridTimeFormatter.format(date);
+  const [hoursRaw = '', minutesRaw = ''] = hhmm.split(':');
+  const hour = Number(hoursRaw.trim());
+  const minute = Number(minutesRaw.trim());
 
-  if (resolvedTimeZone === BUSINESS_TIMEZONE) {
-    const formatted = madridTimeFormatter.format(date);
-    const [hoursRaw, minutesRaw] = formatted.split(':');
-    const hour = Number(hoursRaw);
-    const minute = Number(minutesRaw);
-
-    if (Number.isFinite(hour) && Number.isFinite(minute)) {
-      return hour * 60 + minute;
-    }
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return Number.NaN;
   }
 
-  // Fallback si Intl no respeta Europe/Madrid en runtime (ICU limitado / imagen minimal)
-  const fallbackDate = new Date(date.getTime() + madridOffsetMinutes(date) * 60000);
-  return fallbackDate.getUTCHours() * 60 + fallbackDate.getUTCMinutes();
+  return hour * 60 + minute;
 }
 
 function logBusinessHoursDebug(context, start, end) {
