@@ -23,6 +23,7 @@ export default function DashboardPage({ navigate }) {
   const [appointments, setAppointments] = useState([]);
   const [search, setSearch] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [visibleRange, setVisibleRange] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState('');
@@ -59,8 +60,13 @@ export default function DashboardPage({ navigate }) {
   }
 
   async function loadAppointments() {
-    const start = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1).toISOString();
-    const end = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59).toISOString();
+    const fallbackStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+    const fallbackEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const start = (visibleRange?.start || fallbackStart).toISOString();
+    const end = visibleRange?.end
+      ? new Date(visibleRange.end.getTime() - 1).toISOString()
+      : fallbackEnd.toISOString();
 
     const params = new URLSearchParams({ start, end });
     if (filterClientId) params.set('clientId', filterClientId);
@@ -88,7 +94,7 @@ export default function DashboardPage({ navigate }) {
   useEffect(() => {
     loadAppointments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, filterClientId, filterStatus]);
+  }, [visibleRange, filterClientId, filterStatus]);
 
   useEffect(() => {
     loadNotes(selectedClientId);
@@ -593,7 +599,7 @@ export default function DashboardPage({ navigate }) {
                   setModalOpen(true);
                 }}
                 datesSet={(arg) => {
-                  setSelectedDate(arg.start);
+                  setVisibleRange({ start: arg.start, end: arg.end });
                   setCalendarView(arg.view.type);
                   setViewSelect(arg.view.type);
                   syncViewTitle();
