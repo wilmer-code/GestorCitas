@@ -247,6 +247,15 @@ router.put('/:id', validate(appointmentSchema.partial()), async (req, res) => {
     return res.status(404).json({ message: 'Cita no encontrada' });
   }
 
+  const triesToModifyCoreFields =
+    req.validatedBody.clientId !== undefined ||
+    req.validatedBody.startAt !== undefined ||
+    req.validatedBody.endAt !== undefined;
+
+  if (current.status === 'cancelled' && triesToModifyCoreFields) {
+    return res.status(400).json({ message: 'La cita está cancelada. Reactívala para editarla.' });
+  }
+
   const nextClientId = req.validatedBody.clientId ?? current.clientId;
   const nextStart = req.validatedBody.startAt ? new Date(req.validatedBody.startAt) : current.startAt;
   const nextEnd = req.validatedBody.endAt ? new Date(req.validatedBody.endAt) : current.endAt;

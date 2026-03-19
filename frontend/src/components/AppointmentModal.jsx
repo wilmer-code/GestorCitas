@@ -20,6 +20,7 @@ export default function AppointmentModal({
   onSave,
   onCreateReminder,
   onCancelAppointment,
+  onReactivate,
   error
 }) {
   const {
@@ -37,6 +38,7 @@ export default function AppointmentModal({
   const [offsetMinutes, setOffsetMinutes] = useState(60);
   const [localError, setLocalError] = useState('');
   const minStartAt = useMemo(() => nextMinuteLocalInputValue(), [open]);
+  const isCancelled = appointment?.status === 'cancelled';
 
   useEffect(() => {
     setLocalError('');
@@ -68,6 +70,10 @@ export default function AppointmentModal({
       return;
     }
 
+    if (isCancelled) {
+      return;
+    }
+
     onSave({
       clientId: Number(values.clientId),
       startAt: start.toISOString(),
@@ -87,6 +93,7 @@ export default function AppointmentModal({
             <select
               id="clientId"
               className="w-full border rounded p-2"
+              disabled={isCancelled}
               {...register('clientId', { required: 'Selecciona un cliente' })}
             >
               {clients.map((c) => (
@@ -107,6 +114,7 @@ export default function AppointmentModal({
               className="w-full border rounded p-2"
               type="datetime-local"
               min={minStartAt}
+              disabled={isCancelled}
               {...register('startAt', { required: 'La fecha y hora son obligatorias' })}
             />
             {errors.startAt && <p className="text-red-600 text-sm">{errors.startAt.message}</p>}
@@ -122,6 +130,7 @@ export default function AppointmentModal({
               type="number"
               min="15"
               step="15"
+              disabled={isCancelled}
               {...register('duration', {
                 required: 'La duración es obligatoria',
                 min: { value: 15, message: 'Mínimo 15 minutos' },
@@ -130,6 +139,10 @@ export default function AppointmentModal({
             />
             {errors.duration && <p className="text-red-600 text-sm">{errors.duration.message}</p>}
           </div>
+
+          {isCancelled && (
+            <p className="text-sm app-muted">Cita cancelada: no se puede modificar. Reactívala para editar.</p>
+          )}
 
           {(localError || error) && (
             <p className="text-red-600 text-sm" aria-live="polite">
@@ -147,14 +160,25 @@ export default function AppointmentModal({
                 Cancelar cita
               </button>
             )}
+            {isCancelled && appointment && (
+              <button
+                type="button"
+                className="bg-emerald-600 text-white rounded px-3 py-2"
+                onClick={() => onReactivate?.(appointment.id)}
+              >
+                Reactivar
+              </button>
+            )}
             <button type="button" className="border rounded px-3 py-2" onClick={onClose}>
               Cerrar
             </button>
-            <button className="bg-blue-600 text-white rounded px-3 py-2">Guardar</button>
+            <button className="bg-blue-600 text-white rounded px-3 py-2" disabled={isCancelled}>
+              Guardar
+            </button>
           </div>
         </form>
 
-        {appointment && (
+        {appointment && !isCancelled && (
           <div className="border-t pt-3 space-y-2">
             <p className="text-sm font-medium">Crear recordatorio</p>
             <div className="flex gap-2 flex-wrap">
