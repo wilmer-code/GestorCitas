@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 function toLocalInputValue(date) {
@@ -6,6 +6,10 @@ function toLocalInputValue(date) {
   const offset = d.getTimezoneOffset();
   const local = new Date(d.getTime() - offset * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+function nextMinuteLocalInputValue() {
+  return toLocalInputValue(new Date(Date.now() + 60 * 1000));
 }
 
 export default function AppointmentModal({
@@ -30,9 +34,13 @@ export default function AppointmentModal({
       duration: 60
     }
   });
-  const [offset, setOffset] = useState(60);
+  const [offsetMinutes, setOffsetMinutes] = useState(60);
+  const [localError, setLocalError] = useState('');
+  const minStartAt = useMemo(() => nextMinuteLocalInputValue(), [open]);
 
   useEffect(() => {
+    setLocalError('');
+
     if (!appointment) {
       reset({ clientId: clients[0]?.id || '', startAt: '', duration: 60 });
       return;
@@ -49,8 +57,16 @@ export default function AppointmentModal({
   if (!open) return null;
 
   function submit(values) {
+    setLocalError('');
+
     const start = new Date(values.startAt);
     const end = new Date(start.getTime() + Number(values.duration) * 60000);
+    const now = Date.now();
+
+    if (start.getTime() < now - 60 * 1000) {
+      setLocalError('No se pueden crear citas en el pasado');
+      return;
+    }
 
     onSave({
       clientId: Number(values.clientId),
@@ -90,6 +106,7 @@ export default function AppointmentModal({
               id="startAt"
               className="w-full border rounded p-2"
               type="datetime-local"
+              min={minStartAt}
               {...register('startAt', { required: 'La fecha y hora son obligatorias' })}
             />
             {errors.startAt && <p className="text-red-600 text-sm">{errors.startAt.message}</p>}
@@ -114,9 +131,9 @@ export default function AppointmentModal({
             {errors.duration && <p className="text-red-600 text-sm">{errors.duration.message}</p>}
           </div>
 
-          {error && (
+          {(localError || error) && (
             <p className="text-red-600 text-sm" aria-live="polite">
-              {error}
+              {localError || error}
             </p>
           )}
 
@@ -159,13 +176,15 @@ export default function AppointmentModal({
                 type="number"
                 min="1"
                 className="border rounded p-2 w-32"
-                value={offset}
-                onChange={(e) => setOffset(Number(e.target.value))}
+                value={offsetMinutes}
+                onChange={(e) => setOffsetMinutes(Number(e.target.value))}
                 aria-label="Offset manual en minutos"
+                placeholder="min"
+                title="Offset en minutos"
               />
               <button
                 className="bg-emerald-600 text-white rounded px-3 py-2"
-                onClick={() => onCreateReminder(appointment.id, offset)}
+                onClick={() => onCreateReminder(appointment.id, offsetMinutes)}
                 type="button"
               >
                 Crear manual

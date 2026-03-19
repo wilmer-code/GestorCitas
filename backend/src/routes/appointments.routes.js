@@ -16,6 +16,7 @@ const BUSINESS_TIMEZONE = 'Europe/Madrid';
 const businessStartMinutes = 10 * 60; // 10:00
 const businessEndMinutes = 20 * 60 + 30; // 20:30
 const DEBUG_HORARIO = process.env.DEBUG_HORARIO === '1';
+const PAST_TOLERANCE_MS = 60 * 1000;
 
 const madridTimeFormatter = new Intl.DateTimeFormat('es-ES', {
   timeZone: BUSINESS_TIMEZONE,
@@ -185,6 +186,11 @@ router.post('/', validate(appointmentSchema), async (req, res) => {
     return res.status(400).json({ message: 'La hora de fin debe ser mayor que la de inicio' });
   }
 
+  const now = new Date();
+  if (startDate.getTime() < now.getTime() - PAST_TOLERANCE_MS) {
+    return res.status(400).json({ message: 'No se pueden crear citas en el pasado' });
+  }
+
   const businessHours = isWithinBusinessHours(startDate, endDate);
   logBusinessHoursDebug('POST', startDate, endDate, businessHours.startResult, businessHours.endResult);
 
@@ -247,6 +253,13 @@ router.put('/:id', validate(appointmentSchema.partial()), async (req, res) => {
 
   if (nextStart >= nextEnd) {
     return res.status(400).json({ message: 'La hora de fin debe ser mayor que la de inicio' });
+  }
+
+  if (req.validatedBody.startAt) {
+    const now = new Date();
+    if (nextStart.getTime() < now.getTime() - PAST_TOLERANCE_MS) {
+      return res.status(400).json({ message: 'No se pueden crear citas en el pasado' });
+    }
   }
 
   const businessHours = isWithinBusinessHours(nextStart, nextEnd);
