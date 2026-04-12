@@ -1,28 +1,36 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { api } from '../api';
-import { useAuth } from '../context/AuthContext';
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const {
     register,
     handleSubmit,
     formState: { errors }
   } = useForm({
-    defaultValues: { email: 'user@gestorcitas.local', password: 'user123' }
+    defaultValues: { name: '', email: '', password: '' }
   });
-  const { login } = useAuth();
+
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   async function onSubmit(values) {
     setError('');
+    setSuccess('');
+
     try {
-      const data = await api('/auth/login', { method: 'POST', body: values });
-      login(data);
-      window.history.pushState({}, '', '/dashboard');
-      window.dispatchEvent(new PopStateEvent('popstate'));
+      await api('/auth/register', { method: 'POST', body: values });
+      setSuccess('Cuenta creada');
+      setTimeout(() => {
+        window.history.pushState({}, '', '/login');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }, 700);
     } catch (e) {
-      setError(e.message);
+      if (e.status === 409) {
+        setError('Email ya registrado');
+      } else {
+        setError(e.message);
+      }
     }
   }
 
@@ -30,8 +38,25 @@ export default function LoginPage() {
     <div className="login-wrap">
       <form onSubmit={handleSubmit(onSubmit)} className="login-card space-y-4" noValidate>
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold">GestorCitas</h1>
-          <p className="app-muted text-sm font-normal">Accede para gestionar tu agenda y clientes.</p>
+          <h1 className="text-2xl font-bold">Crear cuenta</h1>
+          <p className="app-muted text-sm font-normal">Regístrate para acceder a GestorCitas.</p>
+        </div>
+
+        <div>
+          <label htmlFor="name" className="app-label">
+            Nombre
+          </label>
+          <input
+            id="name"
+            className="app-input w-full"
+            placeholder="Tu nombre"
+            {...register('name', {
+              required: 'El nombre es obligatorio',
+              minLength: { value: 2, message: 'Mínimo 2 caracteres' },
+              maxLength: { value: 80, message: 'Máximo 80 caracteres' }
+            })}
+          />
+          {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name.message}</p>}
         </div>
 
         <div>
@@ -61,7 +86,7 @@ export default function LoginPage() {
             id="password"
             className="app-input w-full"
             type="password"
-            placeholder="Password"
+            placeholder="Mínimo 6 caracteres"
             {...register('password', {
               required: 'La contraseña es obligatoria',
               minLength: { value: 6, message: 'Mínimo 6 caracteres' }
@@ -76,19 +101,25 @@ export default function LoginPage() {
           </p>
         )}
 
-        <button className="app-btn app-btn-primary login-submit w-full">Entrar</button>
+        {success && (
+          <p className="text-emerald-600 text-sm" aria-live="polite">
+            {success}
+          </p>
+        )}
+
+        <button className="app-btn app-btn-primary login-submit w-full">Crear cuenta</button>
 
         <p className="text-sm app-muted text-center">
-          ¿No tienes cuenta?{' '}
+          ¿Ya tienes cuenta?{' '}
           <button
             type="button"
             className="text-blue-600"
             onClick={() => {
-              window.history.pushState({}, '', '/register');
+              window.history.pushState({}, '', '/login');
               window.dispatchEvent(new PopStateEvent('popstate'));
             }}
           >
-            Crear cuenta
+            Inicia sesión
           </button>
         </p>
       </form>

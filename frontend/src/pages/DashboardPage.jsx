@@ -36,7 +36,6 @@ export default function DashboardPage({ navigate }) {
   const [calendarView, setCalendarView] = useState('dayGridMonth');
   const [tabActive, setTabActive] = useState('Citas');
   const [activeModule, setActiveModule] = useState('citas');
-  const [viewSelect, setViewSelect] = useState('dayGridMonth');
   const [viewTitle, setViewTitle] = useState('');
   const [weekMode, setWeekMode] = useState('fullweek');
   const [weekMenuOpen, setWeekMenuOpen] = useState(false);
@@ -203,7 +202,6 @@ export default function DashboardPage({ navigate }) {
 
     setWeekMode(mode);
     setCalendarView('timeGridWeek');
-    setViewSelect('timeGridWeek');
     setWeekMenuOpen(false);
   }
 
@@ -601,7 +599,6 @@ export default function DashboardPage({ navigate }) {
                 datesSet={(arg) => {
                   setVisibleRange({ start: arg.start, end: arg.end });
                   setCalendarView(arg.view.type);
-                  setViewSelect(arg.view.type);
                   syncViewTitle();
                 }}
                 height="auto"

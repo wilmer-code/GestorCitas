@@ -6,6 +6,7 @@ const usersRoutes = require('./routes/users.routes');
 const clientsRoutes = require('./routes/clients.routes');
 const appointmentsRoutes = require('./routes/appointments.routes');
 const remindersRoutes = require('./routes/reminders.routes');
+const notesRoutes = require('./routes/notes.routes');
 const authRequired = require('./middleware/auth');
 const requireRole = require('./middleware/role');
 
@@ -32,6 +33,7 @@ app.use('/users', authRequired, requireRole('admin'), usersRoutes);
 app.use('/clients', authRequired, clientsRoutes);
 app.use('/appointments', authRequired, appointmentsRoutes);
 app.use('/reminders', authRequired, remindersRoutes);
+app.use('/notes', authRequired, notesRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

@@ -5,10 +5,15 @@ const validate = require('../middleware/validate');
 
 const router = express.Router();
 
-const createReminderSchema = z.object({
-  appointmentId: z.number().int().positive(),
-  offsetMinutes: z.number().int().positive().max(10080)
-});
+const createReminderSchema = z
+  .object({
+    appointmentId: z.number().int().positive(),
+    offsetMinutes: z.number().int().positive().max(10080).optional(),
+    offsetHours: z.number().positive().max(168).optional()
+  })
+  .refine((data) => data.offsetMinutes !== undefined || data.offsetHours !== undefined, {
+    message: 'offsetMinutes u offsetHours requerido'
+  });
 
 router.get('/', async (req, res) => {
   const appointmentId = req.query.appointmentId ? Number(req.query.appointmentId) : null;
@@ -30,7 +35,16 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', validate(createReminderSchema), async (req, res) => {
-  const { appointmentId, offsetMinutes } = req.validatedBody;
+  const { appointmentId, offsetMinutes: rawOffsetMinutes, offsetHours } = req.validatedBody;
+
+  const offsetMinutes =
+    rawOffsetMinutes !== undefined ? Number(rawOffsetMinutes) : Number(offsetHours) * 60;
+
+  if (!Number.isFinite(offsetMinutes) || offsetMinutes <= 0) {
+    return res
+      .status(400)
+      .json({ message: 'Datos inválidos', errors: [{ message: 'offsetMinutes u offsetHours requerido' }] });
+  }
 
   const appointment = await prisma.appointment.findFirst({
     where: { id: appointmentId, userId: req.user.id },

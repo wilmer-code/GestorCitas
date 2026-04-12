@@ -1,4 +1,4 @@
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
@@ -22,7 +22,7 @@ async function main() {
     where: { email: 'user@gestorcitas.local' },
     update: {},
     create: {
-      name: 'Usuario Demo',
+      name: 'Usuario',
       email: 'user@gestorcitas.local',
       passwordHash: userPassword,
       role: 'user'

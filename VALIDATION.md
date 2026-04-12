@@ -273,6 +273,26 @@ curl -s -X PUT "${API_BASE}/clients/$CLIENT_ID" \
   -d '{"phone":"611222333"}'
 ```
 
+### PRUEBA E8 (notas de seguimiento por cliente)
+
+```bash
+# Crear nota
+NOTE=$(curl -s -X POST "${API_BASE}/notes" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"clientId\":$CLIENT_ID,\"content\":\"Cliente prefiere contacto por la tarde\"}")
+
+NOTE_ID=$(echo "$NOTE" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+
+# Listar notas por cliente
+curl -s "${API_BASE}/notes?clientId=$CLIENT_ID" \
+  -H "Authorization: Bearer $USER_TOKEN"
+
+# Eliminar nota
+curl -s -X DELETE "${API_BASE}/notes/$NOTE_ID" \
+  -H "Authorization: Bearer $USER_TOKEN"
+```
+
 ---
 
 ## 7) Appointments CRUD + filtros + anti-solapes
@@ -329,6 +349,45 @@ curl -s "${API_BASE}/appointments?start=$RANGE_START&end=$RANGE_END" \
   -H "Authorization: Bearer $USER_TOKEN"
 ```
 
+### Probar filtros de agenda (E7)
+
+```bash
+# 1) Solo por cliente
+curl -s "${API_BASE}/appointments?start=$RANGE_START&end=$RANGE_END&clientId=$CLIENT_ID" \
+  -H "Authorization: Bearer $USER_TOKEN"
+
+# 2) Solo por estado (scheduled | done | cancelled)
+curl -s "${API_BASE}/appointments?start=$RANGE_START&end=$RANGE_END&status=scheduled" \
+  -H "Authorization: Bearer $USER_TOKEN"
+
+# 3) Combinado: cliente + estado
+curl -s "${API_BASE}/appointments?start=$RANGE_START&end=$RANGE_END&clientId=$CLIENT_ID&status=scheduled" \
+  -H "Authorization: Bearer $USER_TOKEN"
+```
+
+### PRUEBA E4/E7 (cancelar cita + filtro por estado y cliente)
+
+1) Crear cliente QA:
+- POST /clients  → devuelve CLIENT_ID=9
+
+2) Crear cita válida sin solape:
+- POST /appointments
+  body: {"clientId":9,"startAt":"2030-01-16T10:00:00.000Z","endAt":"2030-01-16T11:00:00.000Z"}
+  → devuelve APPT_A=9
+
+3) Cancelar cita:
+- PUT /appointments/9
+  body: {"status":"cancelled"}
+  → respuesta incluye "status":"cancelled"
+
+4) Verificar filtro (rango + cliente + estado):
+- GET /appointments?start=2030-01-01T00:00:00.000Z&end=2030-01-31T23:59:59.000Z&clientId=9&status=cancelled
+  → devuelve array con la cita id=9 y status=cancelled
+
+Cleanup:
+- DELETE /appointments/9
+- DELETE /clients/9
+
 ### Ver cita por id
 
 ```bash
@@ -367,6 +426,82 @@ echo "$REM"
 ```bash
 curl -s "${API_BASE}/reminders?appointmentId=$APPT_ID" \
   -H "Authorization: Bearer $USER_TOKEN"
+```
+
+### PRUEBA E9 (crear recordatorios)
+
+```bash
+# Ejecutado en prueba real
+API_BASE="${API_BASE:-http://localhost:3000}"
+
+USER_TOKEN=$(curl -s -X POST "${API_BASE}/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@gestorcitas.local","password":"user123"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+QA_CLIENT=$(curl -s -X POST "${API_BASE}/clients" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Cliente QA E9E10 REAL","email":"qa.e9e10.real@cliente.com","phone":"600303030"}')
+QA_CLIENT_ID=$(echo "$QA_CLIENT" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+
+QA_APPT=$(curl -s -X POST "${API_BASE}/appointments" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"clientId\":$QA_CLIENT_ID,\"startAt\":\"2026-03-02T10:00:00.000Z\",\"endAt\":\"2026-03-02T11:00:00.000Z\"}")
+QA_APPT_ID=$(echo "$QA_APPT" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+
+REM24_JSON=$(curl -s -X POST "${API_BASE}/reminders" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"appointmentId\":$QA_APPT_ID,\"offsetMinutes\":1440}")
+REM_24=$(echo "$REM24_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+
+REM2_JSON=$(curl -s -X POST "${API_BASE}/reminders" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"appointmentId\":$QA_APPT_ID,\"offsetMinutes\":120}")
+REM_2=$(echo "$REM2_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+```
+
+```text
+IDs reales obtenidos:
+QA_CLIENT_ID=12
+QA_APPT_ID=15
+REM_24=6
+REM_2=7
+```
+
+```json
+REM24_JSON => {"id":6,"appointmentId":15,"sendAt":"2026-03-01T10:00:00.000Z","sentAt":null,"createdAt":"2026-03-06T12:14:27.740Z"}
+REM2_JSON  => {"id":7,"appointmentId":15,"sendAt":"2026-03-02T08:00:00.000Z","sentAt":null,"createdAt":"2026-03-06T12:14:27.778Z"}
+```
+
+### PRUEBA E10 (worker marca sentAt)
+
+```bash
+# se esperó 70s para que corriera el cron
+sleep 70
+curl -s "${API_BASE}/reminders?appointmentId=$QA_APPT_ID" \
+  -H "Authorization: Bearer $USER_TOKEN"
+```
+
+```json
+[{"id":6,"appointmentId":15,"sendAt":"2026-03-01T10:00:00.000Z","sentAt":"2026-03-06T12:15:00.580Z","createdAt":"2026-03-06T12:14:27.740Z","appointment":{"id":15,"userId":2,"clientId":12,"startAt":"2026-03-02T10:00:00.000Z","endAt":"2026-03-02T11:00:00.000Z","status":"scheduled","createdAt":"2026-03-06T12:14:27.703Z","updatedAt":"2026-03-06T12:14:27.703Z","client":{"id":12,"userId":2,"name":"Cliente QA E9E10 REAL","email":"qa.e9e10.real@cliente.com","phone":"600303030","createdAt":"2026-03-06T12:14:27.662Z","updatedAt":"2026-03-06T12:14:27.662Z"}}},{"id":7,"appointmentId":15,"sendAt":"2026-03-02T08:00:00.000Z","sentAt":"2026-03-06T12:15:00.583Z","createdAt":"2026-03-06T12:14:27.778Z","appointment":{"id":15,"userId":2,"clientId":12,"startAt":"2026-03-02T10:00:00.000Z","endAt":"2026-03-02T11:00:00.000Z","status":"scheduled","createdAt":"2026-03-06T12:14:27.703Z","updatedAt":"2026-03-06T12:14:27.703Z","client":{"id":12,"userId":2,"name":"Cliente QA E9E10 REAL","email":"qa.e9e10.real@cliente.com","phone":"600303030","createdAt":"2026-03-06T12:14:27.662Z","updatedAt":"2026-03-06T12:14:27.662Z"}}}]
+```
+
+Esperado validado: reminders con `sentAt != null`.
+
+### Cleanup ejecutado
+
+```bash
+curl -s -X DELETE "${API_BASE}/appointments/$QA_APPT_ID" -H "Authorization: Bearer $USER_TOKEN" >/dev/null || true
+curl -s -X DELETE "${API_BASE}/clients/$QA_CLIENT_ID" -H "Authorization: Bearer $USER_TOKEN" >/dev/null || true
+echo "cleanup ok"
+```
+
+```text
+cleanup ok
 ```
 
 ### Ver cron en modo dev
@@ -450,3 +585,95 @@ curl -s -X DELETE "${API_BASE}/clients/$CLIENT_ID" \
 - Captura de creación/edición de cita válida (modal o resultado en calendario).
 - Captura del error de solape mostrado en UI (mensaje de conflicto).
 - Captura de Swagger en `${API_BASE}/api/docs` con endpoints principales.
+
+### PRUEBA E8 (Notas de seguimiento por cliente)
+
+```bash
+# ==========================================
+# PRUEBA E8 — Notas por cliente (CRUD)
+# Requiere: backend arriba (3000) y usuario demo
+# ==========================================
+
+API_BASE="${API_BASE:-http://localhost:3000}"
+
+# 0) Login (token) [sin python]
+LOGIN_JSON=$(curl -s -X POST "${API_BASE}/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@gestorcitas.local","password":"user123"}')
+USER_TOKEN=$(echo "$LOGIN_JSON" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+echo "USER_TOKEN_LEN=${#USER_TOKEN}"
+
+# 1) Crear cliente QA (nuevo)
+CLIENT_JSON=$(curl -s -X POST "${API_BASE}/clients" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Cliente QA E8 Notas","email":"qa.e8.notas@cliente.com","phone":"600888777"}')
+CLIENT_ID=$(echo "$CLIENT_JSON" | sed -n 's/.*"id":\([0-9]\+\).*/\1/p')
+echo "CLIENT_ID=$CLIENT_ID"
+echo "$CLIENT_JSON" | head -c 2000; echo
+
+# 2) Crear nota (POST /notes)
+CREATE_NOTE_JSON=$(curl -s -X POST "${API_BASE}/notes" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"clientId\":$CLIENT_ID,\"content\":\"Primera nota QA (E8) — seguimiento inicial.\"}")
+NOTE_ID=$(echo "$CREATE_NOTE_JSON" | sed -n 's/.*"id":\([0-9]\+\).*/\1/p')
+echo "NOTE_ID=$NOTE_ID"
+echo "$CREATE_NOTE_JSON" | head -c 2000; echo
+
+# 3) Listar notas por cliente (GET /notes?clientId=)
+echo "---- GET notes (after create) ----"
+GET1_STATUS=$(curl -s -o /tmp/e8_get1.json -w "%{http_code}" "${API_BASE}/notes?clientId=$CLIENT_ID" \
+  -H "Authorization: Bearer $USER_TOKEN")
+echo "STATUS=$GET1_STATUS"
+cat /tmp/e8_get1.json | head -c 2000; echo
+
+# 4) Editar nota (PUT /notes/:id)
+echo "---- PUT note (update) ----"
+PUT_STATUS=$(curl -s -o /tmp/e8_put.json -w "%{http_code}" -X PUT "${API_BASE}/notes/$NOTE_ID" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"content\":\"Nota QA (E8) EDITADA — seguimiento actualizado.\"}")
+echo "STATUS=$PUT_STATUS"
+cat /tmp/e8_put.json | head -c 2000; echo
+
+# 5) Listar notas por cliente (GET /notes?clientId=) y verificar contenido actualizado
+echo "---- GET notes (after update) ----"
+GET2_STATUS=$(curl -s -o /tmp/e8_get2.json -w "%{http_code}" "${API_BASE}/notes?clientId=$CLIENT_ID" \
+  -H "Authorization: Bearer $USER_TOKEN")
+echo "STATUS=$GET2_STATUS"
+cat /tmp/e8_get2.json | head -c 2000; echo
+
+# 6) Eliminar nota (DELETE /notes/:id)
+echo "---- DELETE note ----"
+DEL_STATUS=$(curl -s -o /tmp/e8_del.txt -w "%{http_code}" -X DELETE "${API_BASE}/notes/$NOTE_ID" \
+  -H "Authorization: Bearer $USER_TOKEN")
+echo "STATUS=$DEL_STATUS"
+cat /tmp/e8_del.txt | head -c 2000; echo
+
+# 7) Listar notas por cliente (debe devolver [])
+echo "---- GET notes (after delete) ----"
+GET3_STATUS=$(curl -s -o /tmp/e8_get3.json -w "%{http_code}" "${API_BASE}/notes?clientId=$CLIENT_ID" \
+  -H "Authorization: Bearer $USER_TOKEN")
+echo "STATUS=$GET3_STATUS"
+cat /tmp/e8_get3.json | head -c 2000; echo
+
+# 8) Cleanup cliente
+CLEAN_STATUS=$(curl -s -o /tmp/e8_clean.txt -w "%{http_code}" -X DELETE "${API_BASE}/clients/$CLIENT_ID" \
+  -H "Authorization: Bearer $USER_TOKEN")
+echo "cleanup status=$CLEAN_STATUS"
+echo "cleanup ok"
+
+# 9) Reinicio backend (si corre en pm2)
+pm2 restart gestorcitas-backend || true
+```
+
+**Resultado esperado (evidencia):**
+- Login devuelve token válido (`USER_TOKEN_LEN > 0`).
+- Crear cliente devuelve `CLIENT_ID` numérico.
+- Crear nota devuelve `NOTE_ID` numérico y status `201`.
+- GET tras crear devuelve array con la nota.
+- PUT devuelve la nota con `content` actualizado y status `200`.
+- DELETE devuelve status `204`.
+- GET final devuelve `[]` con status `200`.
+- Cleanup final imprime `cleanup ok`. 

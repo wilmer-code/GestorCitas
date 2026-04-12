@@ -1,5 +1,5 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const prisma = require('../lib/prisma');
@@ -8,9 +8,43 @@ const validate = require('../middleware/validate');
 
 const router = express.Router();
 
+const registerSchema = z.object({
+  name: z.string().min(2).max(80),
+  email: z.string().email(),
+  password: z.string().min(6)
+});
+
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1)
+});
+
+router.post('/register', validate(registerSchema), async (req, res) => {
+  const { name, email, password } = req.validatedBody;
+
+  const exists = await prisma.user.findUnique({ where: { email } });
+  if (exists) {
+    return res.status(409).json({ message: 'Email ya registrado' });
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  const user = await prisma.user.create({
+    data: {
+      name,
+      email,
+      passwordHash,
+      role: 'user'
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true
+    }
+  });
+
+  return res.status(201).json(user);
 });
 
 router.post('/login', validate(loginSchema), async (req, res) => {

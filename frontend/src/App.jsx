@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import { useAuth } from './context/AuthContext';
@@ -29,17 +30,18 @@ export default function App() {
     return <div className="p-6">Cargando...</div>;
   }
 
-  if (!user && path !== '/login') {
+  if (!user && path !== '/login' && path !== '/register') {
     navigate('/login');
     return null;
   }
 
-  if (user && path === '/login') {
+  if (user && (path === '/login' || path === '/register')) {
     navigate('/dashboard');
     return null;
   }
 
   if (path === '/login') return <LoginPage />;
+  if (path === '/register') return <RegisterPage />;
   if (path === '/admin/users') return <AdminUsersPage navigate={navigate} />;
   return <DashboardPage navigate={navigate} />;
 }

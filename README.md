@@ -56,7 +56,7 @@ App en `http://localhost:5173`
 ## Variables de entorno (backend/.env)
 
 ```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/gestorcitas?schema=public"
+DATABASE_URL="postgresql://gestorcitas:gestorcitas@localhost:5433/gestorcitas?schema=public"
 JWT_SECRET="cambia_esto_por_un_secreto"
 PORT=3000
 REMINDER_MODE="dev" # dev | email
@@ -85,3 +85,54 @@ SMTP_FROM="no-reply@gestorcitas.local"
    - `REMINDER_MODE=dev`: consola y marca `sent_at`
    - `REMINDER_MODE=email`: envío SMTP (si está configurado)
 5. Seguridad: JWT en endpoints protegidos + validación Zod
+
+---
+
+## Ejecución en local (Docker solo para Postgres)
+
+### 1) Levantar Postgres
+
+> Nota: Postgres Docker expone `5433` en el host porque `5432` suele estar ocupado por el Postgres del sistema.
+
+```bash
+docker compose up -d
+docker compose ps
+```
+
+### 2) Backend
+
+```bash
+cd backend
+cp .env.example .env
+npm i
+npx prisma generate
+npx prisma migrate dev
+npx prisma db seed
+npm run dev
+```
+
+### 3) Frontend
+
+```bash
+cd ../frontend
+cp .env.example .env
+npm i
+npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+### 4) URLs
+
+- Frontend: http://localhost:5173
+- Backend health: http://localhost:3000/health
+- Swagger: http://localhost:3000/api/docs
+
+### 5) Usuario demo (seed)
+
+- admin@gestorcitas.local / admin123
+- user@gestorcitas.local / user123
+
+### 6) Parar
+
+```bash
+docker compose down
+```
