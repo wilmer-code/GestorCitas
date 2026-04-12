@@ -1,0 +1,5 @@
+ALTER TABLE IF EXISTS "User" RENAME TO usuarios;
+ALTER TABLE IF EXISTS "Client" RENAME TO clientes;
+ALTER TABLE IF EXISTS "Appointment" RENAME TO citas;
+ALTER TABLE IF EXISTS "Reminder" RENAME TO recordatorios;
+ALTER TABLE IF EXISTS "Note" RENAME TO notas;

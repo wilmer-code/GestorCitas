@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  user
+}
+
+enum AppointmentStatus {
+  scheduled
+  completed
+  cancelled
+}
+
+model User {
+  id           Int           @id @default(autoincrement())
+  name         String
+  email        String        @unique
+  passwordHash String
+  role         Role          @default(user)
+  clients      Client[]
+  appointments Appointment[]
+  notes        Note[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@map("usuarios")
+}
+
+model Client {
+  id           Int           @id @default(autoincrement())
+  userId       Int
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  email        String?
+  phone        String?
+  appointments Appointment[]
+  notes        Note[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([userId])
+  @@map("clientes")
+}
+
+model Appointment {
+  id          Int               @id @default(autoincrement())
+  userId      Int
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId    Int
+  client      Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  startAt     DateTime
+  endAt       DateTime
+  status      AppointmentStatus @default(scheduled)
+  reminders   Reminder[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([userId, startAt, endAt])
+  @@index([clientId])
+  @@map("citas")
+}
+
+model Reminder {
+  id            Int         @id @default(autoincrement())
+  appointmentId Int
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  sendAt        DateTime
+  sentAt        DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@index([sendAt, sentAt])
+  @@map("recordatorios")
+}
+
+model Note {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  clientId  Int
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([createdAt(sort: Desc)])
+  @@map("notas")
+}
