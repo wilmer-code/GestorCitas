@@ -7,88 +7,108 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  admin
-  user
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  email       String   @unique
+  plan        Plan     @default(FREE)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  users        User[]
+  clients      Client[]
+  appointments Appointment[]
+  reminders    Reminder[]
+
+  @@map("tenants")
 }
 
-enum AppointmentStatus {
-  scheduled
-  completed
-  cancelled
+enum Plan {
+  FREE
+  PRO
+  BUSINESS
 }
 
 model User {
-  id           Int           @id @default(autoincrement())
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  email        String
+  passwordHash String   @map("password_hash")
   name         String
-  email        String        @unique
-  passwordHash String
-  role         Role          @default(user)
-  clients      Client[]
-  appointments Appointment[]
-  notes        Note[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  @@map("usuarios")
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  USER
 }
 
 model Client {
-  id           Int           @id @default(autoincrement())
-  userId       Int
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name         String
-  email        String?
-  phone        String?
-  appointments Appointment[]
-  notes        Note[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  email     String?
+  phone     String?
+  notes     String?
+  tags      String[] @default([])
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@index([userId])
-  @@map("clientes")
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@map("clients")
 }
 
 model Appointment {
-  id          Int               @id @default(autoincrement())
-  userId      Int
-  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  clientId    Int
-  client      Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  startAt     DateTime
-  endAt       DateTime
-  status      AppointmentStatus @default(scheduled)
-  reminders   Reminder[]
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id          String            @id @default(uuid())
+  tenantId    String            @map("tenant_id")
+  userId      String            @map("user_id")
+  clientId    String            @map("client_id")
+  title       String
+  startTime   DateTime          @map("start_time")
+  endTime     DateTime          @map("end_time")
+  status      AppointmentStatus @default(PENDING)
+  notes       String?
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
 
-  @@index([userId, startAt, endAt])
-  @@index([clientId])
-  @@map("citas")
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id])
+  client    Client     @relation(fields: [clientId], references: [id])
+  reminders Reminder[]
+
+  @@map("appointments")
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
 }
 
 model Reminder {
-  id            Int         @id @default(autoincrement())
-  appointmentId Int
-  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  sendAt        DateTime
-  sentAt        DateTime?
-  createdAt     DateTime    @default(now())
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  appointmentId String   @map("appointment_id")
+  sendAt        DateTime @map("send_at")
+  sentAt        DateTime? @map("sent_at")
+  message       String?
+  createdAt     DateTime @default(now()) @map("created_at")
 
-  @@index([sendAt, sentAt])
-  @@map("recordatorios")
-}
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
-model Note {
-  id        Int      @id @default(autoincrement())
-  userId    Int?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  clientId  Int
-  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  content   String
-  createdAt DateTime @default(now())
-
-  @@index([clientId])
-  @@index([createdAt(sort: Desc)])
-  @@map("notas")
+  @@map("reminders")
 }

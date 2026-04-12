@@ -1,43 +1,42 @@
-const express = require('express');
-const swaggerUi = require('swagger-ui-express');
-const swaggerDocument = require('./lib/swagger');
-const authRoutes = require('./routes/auth.routes');
-const usersRoutes = require('./routes/users.routes');
-const clientsRoutes = require('./routes/clients.routes');
-const appointmentsRoutes = require('./routes/appointments.routes');
-const remindersRoutes = require('./routes/reminders.routes');
-const notesRoutes = require('./routes/notes.routes');
-const authRequired = require('./middleware/auth');
-const requireRole = require('./middleware/role');
+import express from 'express'
+import cors from 'cors'
+import { setupSwagger } from './lib/swagger.js'
+import authRoutes from './routes/auth.routes.js'
+import usersRoutes from './routes/users.routes.js'
+import clientsRoutes from './routes/clients.routes.js'
+import appointmentsRoutes from './routes/appointments.routes.js'
+import remindersRoutes from './routes/reminders.routes.js'
+import tenantsRoutes from './routes/tenants.routes.js'
+import { tenantMiddleware } from './middleware/tenant.js'
 
-const app = express();
+const app = express()
 
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
-  next();
-});
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-Tenant-Slug']
+}))
 
-app.use(express.json());
+app.use(express.json())
 
-app.get('/health', (_req, res) => {
-  res.json({ ok: true });
-});
+app.get('/health', (_req, res) => res.json({ ok: true }))
 
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+// Registro de tenants — sin middleware de tenant
+app.use('/tenants', tenantsRoutes)
 
-app.use('/auth', authRoutes);
-app.use('/users', authRequired, requireRole('admin'), usersRoutes);
-app.use('/clients', authRequired, clientsRoutes);
-app.use('/appointments', authRequired, appointmentsRoutes);
-app.use('/reminders', authRequired, remindersRoutes);
-app.use('/notes', authRequired, notesRoutes);
+// Rutas protegidas por tenant
+app.use(tenantMiddleware)
+app.use('/auth', authRoutes)
+app.use('/users', usersRoutes)
+app.use('/clients', clientsRoutes)
+app.use('/appointments', appointmentsRoutes)
+app.use('/reminders', remindersRoutes)
+
+setupSwagger(app)
 
 app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({ message: 'Error interno del servidor' });
-});
+  console.error(err)
+  res.status(500).json({ error: 'Error interno del servidor' })
+})
 
-module.exports = app;
+export default app
