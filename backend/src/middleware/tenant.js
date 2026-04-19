@@ -1,10 +1,8 @@
-import { prisma } from '../lib/prisma.js'
+const prisma = require('../lib/prisma')
 
-export async function tenantMiddleware(req, res, next) {
+async function tenantMiddleware(req, res, next) {
   try {
-    const slug =
-      req.headers['x-tenant-slug'] ||
-      req.hostname.split('.')[0]
+    const slug = req.headers['x-tenant-slug'] || req.hostname.split('.')[0]
 
     if (!slug || slug === 'localhost' || slug === '187') {
       req.tenantSlug = 'demo'
@@ -26,3 +24,5 @@ export async function tenantMiddleware(req, res, next) {
     next(err)
   }
 }
+
+module.exports = { tenantMiddleware }

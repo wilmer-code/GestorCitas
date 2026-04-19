@@ -1,5 +1,7 @@
-import { PrismaClient } from '@prisma/client'
+const { PrismaClient } = require('@prisma/client')
 
-export const prisma = new PrismaClient({
+const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error']
 })
+
+module.exports = prisma
