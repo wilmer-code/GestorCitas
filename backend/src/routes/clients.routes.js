@@ -1,107 +1,104 @@
-const express = require('express');
-const { z } = require('zod');
-const prisma = require('../lib/prisma');
-const validate = require('../middleware/validate');
+const express = require('express')
+const { z } = require('zod')
+const prisma = require('../lib/prisma')
+const authRequired = require('../middleware/auth')
+const validate = require('../middleware/validate')
 
-const router = express.Router();
+const router = express.Router()
+
+router.use(authRequired)
 
 const clientSchema = z.object({
-  name: z.string().min(2),
+  name: z.string().min(2).max(100),
   email: z.string().email().optional().or(z.literal('')),
-  phone: z.string().min(3).optional().or(z.literal(''))
-});
+  phone: z.string().min(3).max(30).optional().or(z.literal('')),
+  notes: z.string().max(500).optional(),
+  tags: z.array(z.string()).optional()
+})
 
-router.get('/', async (req, res) => {
-  const q = (req.query.q || '').toString().trim();
+router.get('/', async (req, res, next) => {
+  try {
+    const q = (req.query.q || '').toString().trim()
+    const tenantId = req.user.tenantId
 
-  const where = {
-    userId: req.user.id,
-    ...(q
-      ? {
-          OR: [
-            { name: { contains: q, mode: 'insensitive' } },
-            { email: { contains: q, mode: 'insensitive' } },
-            { phone: { contains: q, mode: 'insensitive' } }
-          ]
-        }
-      : {})
-  };
-
-  const clients = await prisma.client.findMany({
-    where,
-    orderBy: { name: 'asc' }
-  });
-
-  res.json(clients);
-});
-
-router.post('/', validate(clientSchema), async (req, res) => {
-  const { name, email, phone } = req.validatedBody;
-
-  const client = await prisma.client.create({
-    data: {
-      userId: req.user.id,
-      name,
-      email: email || null,
-      phone: phone || null
+    const where = {
+      tenantId,
+      ...(q ? {
+        OR: [
+          { name: { contains: q, mode: 'insensitive' } },
+          { email: { contains: q, mode: 'insensitive' } },
+          { phone: { contains: q, mode: 'insensitive' } }
+        ]
+      } : {})
     }
-  });
 
-  res.status(201).json(client);
-});
+    const clients = await prisma.client.findMany({
+      where,
+      orderBy: { name: 'asc' }
+    })
 
-router.get('/:id', async (req, res) => {
-  const id = Number(req.params.id);
+    res.json(clients)
+  } catch (err) { next(err) }
+})
 
-  const client = await prisma.client.findFirst({
-    where: { id, userId: req.user.id }
-  });
+router.post('/', validate(clientSchema), async (req, res, next) => {
+  try {
+    const { name, email, phone, notes, tags } = req.validatedBody
+    const client = await prisma.client.create({
+      data: {
+        tenantId: req.user.tenantId,
+        name,
+        email: email || null,
+        phone: phone || null,
+        notes: notes || null,
+        tags: tags || []
+      }
+    })
+    res.status(201).json(client)
+  } catch (err) { next(err) }
+})
 
-  if (!client) {
-    return res.status(404).json({ message: 'Cliente no encontrado' });
-  }
+router.get('/:id', async (req, res, next) => {
+  try {
+    const client = await prisma.client.findFirst({
+      where: { id: req.params.id, tenantId: req.user.tenantId }
+    })
+    if (!client) return res.status(404).json({ message: 'Cliente no encontrado' })
+    res.json(client)
+  } catch (err) { next(err) }
+})
 
-  res.json(client);
-});
+router.put('/:id', validate(clientSchema.partial()), async (req, res, next) => {
+  try {
+    const exists = await prisma.client.findFirst({
+      where: { id: req.params.id, tenantId: req.user.tenantId }
+    })
+    if (!exists) return res.status(404).json({ message: 'Cliente no encontrado' })
 
-router.put('/:id', validate(clientSchema.partial()), async (req, res) => {
-  const id = Number(req.params.id);
+    const { name, email, phone, notes, tags } = req.validatedBody
+    const client = await prisma.client.update({
+      where: { id: req.params.id },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(email !== undefined ? { email: email || null } : {}),
+        ...(phone !== undefined ? { phone: phone || null } : {}),
+        ...(notes !== undefined ? { notes } : {}),
+        ...(tags !== undefined ? { tags } : {})
+      }
+    })
+    res.json(client)
+  } catch (err) { next(err) }
+})
 
-  const exists = await prisma.client.findFirst({
-    where: { id, userId: req.user.id }
-  });
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const exists = await prisma.client.findFirst({
+      where: { id: req.params.id, tenantId: req.user.tenantId }
+    })
+    if (!exists) return res.status(404).json({ message: 'Cliente no encontrado' })
+    await prisma.client.delete({ where: { id: req.params.id } })
+    res.status(204).send()
+  } catch (err) { next(err) }
+})
 
-  if (!exists) {
-    return res.status(404).json({ message: 'Cliente no encontrado' });
-  }
-
-  const { name, email, phone } = req.validatedBody;
-
-  const client = await prisma.client.update({
-    where: { id },
-    data: {
-      ...(name !== undefined ? { name } : {}),
-      ...(email !== undefined ? { email: email || null } : {}),
-      ...(phone !== undefined ? { phone: phone || null } : {})
-    }
-  });
-
-  res.json(client);
-});
-
-router.delete('/:id', async (req, res) => {
-  const id = Number(req.params.id);
-
-  const exists = await prisma.client.findFirst({
-    where: { id, userId: req.user.id }
-  });
-
-  if (!exists) {
-    return res.status(404).json({ message: 'Cliente no encontrado' });
-  }
-
-  await prisma.client.delete({ where: { id } });
-  res.status(204).send();
-});
-
-module.exports = router;
+module.exports = router
