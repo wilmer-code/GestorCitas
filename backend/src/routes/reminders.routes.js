@@ -1,70 +1,71 @@
-const express = require('express');
-const { z } = require('zod');
-const prisma = require('../lib/prisma');
-const validate = require('../middleware/validate');
+const { Router } = require('express')
+const { z } = require('zod')
+const prisma = require('../lib/prisma')
+const authRequired = require('../middleware/auth')
+const validate = require('../middleware/validate')
 
-const router = express.Router();
+const router = Router()
+router.use(authRequired)
 
-const createReminderSchema = z
-  .object({
-    appointmentId: z.number().int().positive(),
-    offsetMinutes: z.number().int().positive().max(10080).optional(),
-    offsetHours: z.number().positive().max(168).optional()
-  })
-  .refine((data) => data.offsetMinutes !== undefined || data.offsetHours !== undefined, {
-    message: 'offsetMinutes u offsetHours requerido'
-  });
+const reminderSchema = z.object({
+  appointmentId: z.string().uuid(),
+  sendAt: z.string().datetime(),
+  message: z.string().max(500).optional()
+})
 
-router.get('/', async (req, res) => {
-  const appointmentId = req.query.appointmentId ? Number(req.query.appointmentId) : null;
+router.get('/', async (req, res, next) => {
+  try {
+    const { appointmentId } = req.query
+    const tenantId = req.user.tenantId
 
-  const reminders = await prisma.reminder.findMany({
-    where: {
-      ...(appointmentId ? { appointmentId } : {}),
-      appointment: { userId: req.user.id }
-    },
-    include: {
-      appointment: {
-        include: { client: true }
-      }
-    },
-    orderBy: { sendAt: 'asc' }
-  });
+    const reminders = await prisma.reminder.findMany({
+      where: {
+        tenantId,
+        ...(appointmentId ? { appointmentId } : {})
+      },
+      include: { appointment: { include: { client: true } } },
+      orderBy: { sendAt: 'asc' }
+    })
 
-  res.json(reminders);
-});
+    res.json(reminders)
+  } catch (err) { next(err) }
+})
 
-router.post('/', validate(createReminderSchema), async (req, res) => {
-  const { appointmentId, offsetMinutes: rawOffsetMinutes, offsetHours } = req.validatedBody;
+router.post('/', validate(reminderSchema), async (req, res, next) => {
+  try {
+    const { appointmentId, sendAt, message } = req.validatedBody
+    const tenantId = req.user.tenantId
 
-  const offsetMinutes =
-    rawOffsetMinutes !== undefined ? Number(rawOffsetMinutes) : Number(offsetHours) * 60;
-
-  if (!Number.isFinite(offsetMinutes) || offsetMinutes <= 0) {
-    return res
-      .status(400)
-      .json({ message: 'Datos inválidos', errors: [{ message: 'offsetMinutes u offsetHours requerido' }] });
-  }
-
-  const appointment = await prisma.appointment.findFirst({
-    where: { id: appointmentId, userId: req.user.id },
-    include: { client: true }
-  });
-
-  if (!appointment) {
-    return res.status(404).json({ message: 'Cita no encontrada' });
-  }
-
-  const sendAt = new Date(appointment.startAt.getTime() - offsetMinutes * 60 * 1000);
-
-  const reminder = await prisma.reminder.create({
-    data: {
-      appointmentId,
-      sendAt
+    const appointment = await prisma.appointment.findFirst({
+      where: { id: appointmentId, tenantId }
+    })
+    if (!appointment) {
+      return res.status(404).json({ message: 'Cita no encontrada' })
     }
-  });
 
-  res.status(201).json(reminder);
-});
+    const reminder = await prisma.reminder.create({
+      data: {
+        tenantId,
+        appointmentId,
+        sendAt: new Date(sendAt),
+        message: message || null
+      }
+    })
 
-module.exports = router;
+    res.status(201).json(reminder)
+  } catch (err) { next(err) }
+})
+
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const exists = await prisma.reminder.findFirst({
+      where: { id: req.params.id, tenantId: req.user.tenantId }
+    })
+    if (!exists) return res.status(404).json({ message: 'Recordatorio no encontrado' })
+
+    await prisma.reminder.delete({ where: { id: req.params.id } })
+    res.status(204).send()
+  } catch (err) { next(err) }
+})
+
+module.exports = router
