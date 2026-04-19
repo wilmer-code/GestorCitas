@@ -1,36 +1,57 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { api } from '../api';
+import { useAuth } from '../context/AuthContext';
+
+function navigate(path) {
+  window.history.pushState({}, '', path);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
 
 export default function RegisterPage() {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors }
-  } = useForm({
-    defaultValues: { name: '', email: '', password: '' }
-  });
-
+  const { register, handleSubmit, watch, formState: { errors } } = useForm();
+  const { login } = useAuth();
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [slugAvailable, setSlugAvailable] = useState(null);
+
+  const slugValue = watch('slug', '');
+
+  async function checkSlug(slug) {
+    if (!slug || slug.length < 2) { setSlugAvailable(null); return; }
+    try {
+      const res = await api(`/tenants/check-slug/${slug}`);
+      setSlugAvailable(res.available);
+    } catch {
+      setSlugAvailable(null);
+    }
+  }
 
   async function onSubmit(values) {
     setError('');
-    setSuccess('');
-
+    setLoading(true);
     try {
-      await api('/auth/register', { method: 'POST', body: values });
-      setSuccess('Cuenta creada');
-      setTimeout(() => {
-        window.history.pushState({}, '', '/login');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }, 700);
+      await api('/tenants/register', {
+        method: 'POST',
+        body: {
+          businessName: values.businessName,
+          slug: values.slug,
+          adminEmail: values.email,
+          adminPassword: values.password,
+          adminName: values.adminName
+        }
+      });
+      const loginData = await api('/auth/login', {
+        method: 'POST',
+        body: { email: values.email, password: values.password },
+        tenantSlug: values.slug
+      });
+      login(loginData, values.slug);
+      navigate('/dashboard');
     } catch (e) {
-      if (e.status === 409) {
-        setError('Email ya registrado');
-      } else {
-        setError(e.message);
-      }
+      setError(e.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -38,88 +59,99 @@ export default function RegisterPage() {
     <div className="login-wrap">
       <form onSubmit={handleSubmit(onSubmit)} className="login-card space-y-4" noValidate>
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold">Crear cuenta</h1>
-          <p className="app-muted text-sm font-normal">Regístrate para acceder a GestorCitas.</p>
+          <h1 className="text-2xl font-bold text-blue-600">Citio</h1>
+          <p className="app-muted text-sm">Crea tu cuenta gratis — sin tarjeta de credito</p>
         </div>
 
         <div>
-          <label htmlFor="name" className="app-label">
-            Nombre
-          </label>
+          <label className="app-label">Nombre de tu negocio</label>
           <input
-            id="name"
             className="app-input w-full"
-            placeholder="Tu nombre"
-            {...register('name', {
-              required: 'El nombre es obligatorio',
-              minLength: { value: 2, message: 'Mínimo 2 caracteres' },
-              maxLength: { value: 80, message: 'Máximo 80 caracteres' }
-            })}
+            placeholder="Mi Peluqueria"
+            {...register('businessName', { required: 'Obligatorio', minLength: { value: 2, message: 'Minimo 2 caracteres' } })}
           />
-          {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name.message}</p>}
+          {errors.businessName && <p className="text-red-600 text-sm mt-1">{errors.businessName.message}</p>}
         </div>
 
         <div>
-          <label htmlFor="email" className="app-label">
-            Email
-          </label>
+          <label className="app-label">URL de tu negocio</label>
+          <div className="flex items-center gap-1">
+            <input
+              className="app-input flex-1"
+              placeholder="mi-peluqueria"
+              {...register('slug', {
+                required: 'Obligatorio',
+                minLength: { value: 2, message: 'Minimo 2 caracteres' },
+                pattern: { value: /^[a-z0-9-]+$/, message: 'Solo minusculas, numeros y guiones' },
+                onChange: (e) => checkSlug(e.target.value)
+              })}
+            />
+            <span className="text-xs app-muted">.citio.app</span>
+          </div>
+          {slugValue.length >= 2 && slugAvailable === true && (
+            <p className="text-green-600 text-sm mt-1">Disponible</p>
+          )}
+          {slugValue.length >= 2 && slugAvailable === false && (
+            <p className="text-red-600 text-sm mt-1">Ya esta en uso</p>
+          )}
+          {errors.slug && <p className="text-red-600 text-sm mt-1">{errors.slug.message}</p>}
+        </div>
+
+        <div>
+          <label className="app-label">Tu nombre</label>
           <input
-            id="email"
             className="app-input w-full"
-            placeholder="Email"
+            placeholder="Maria Garcia"
+            {...register('adminName', { required: 'Obligatorio', minLength: { value: 2, message: 'Minimo 2 caracteres' } })}
+          />
+          {errors.adminName && <p className="text-red-600 text-sm mt-1">{errors.adminName.message}</p>}
+        </div>
+
+        <div>
+          <label className="app-label">Email</label>
+          <input
+            className="app-input w-full"
+            placeholder="tu@email.com"
+            type="email"
             {...register('email', {
-              required: 'El email es obligatorio',
-              pattern: {
-                value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                message: 'Formato de email inválido'
-              }
+              required: 'Obligatorio',
+              pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Email invalido' }
             })}
           />
           {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email.message}</p>}
         </div>
 
         <div>
-          <label htmlFor="password" className="app-label">
-            Password
-          </label>
+          <label className="app-label">Contrasena</label>
           <input
-            id="password"
             className="app-input w-full"
             type="password"
-            placeholder="Mínimo 6 caracteres"
+            placeholder="Minimo 8 caracteres"
             {...register('password', {
-              required: 'La contraseña es obligatoria',
-              minLength: { value: 6, message: 'Mínimo 6 caracteres' }
+              required: 'Obligatorio',
+              minLength: { value: 8, message: 'Minimo 8 caracteres' }
             })}
           />
           {errors.password && <p className="text-red-600 text-sm mt-1">{errors.password.message}</p>}
         </div>
 
-        {error && (
-          <p className="text-red-600 text-sm" aria-live="polite">
-            {error}
-          </p>
-        )}
+        {error && <p className="text-red-600 text-sm" aria-live="polite">{error}</p>}
 
-        {success && (
-          <p className="text-emerald-600 text-sm" aria-live="polite">
-            {success}
-          </p>
-        )}
-
-        <button className="app-btn app-btn-primary login-submit w-full">Crear cuenta</button>
+        <button
+          className="app-btn app-btn-primary login-submit w-full"
+          disabled={loading || slugAvailable === false}
+        >
+          {loading ? 'Creando cuenta...' : 'Crear cuenta gratis'}
+        </button>
 
         <p className="text-sm app-muted text-center">
-          ¿Ya tienes cuenta?{' '}
+          Ya tienes cuenta?{' '}
           <button
             type="button"
-            className="text-blue-600"
-            onClick={() => {
-              window.history.pushState({}, '', '/login');
-              window.dispatchEvent(new PopStateEvent('popstate'));
-            }}
+            className="text-blue-600 hover:underline"
+            onClick={() => navigate('/login')}
           >
-            Inicia sesión
+            Entrar
           </button>
         </p>
       </form>

@@ -10,11 +10,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     async function loadMe() {
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-
+      if (!token) { setLoading(false); return; }
       try {
         const me = await api('/auth/me', { token });
         setUser(me);
@@ -24,22 +20,26 @@ export function AuthProvider({ children }) {
         setLoading(false);
       }
     }
-
     loadMe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  function login(payload) {
+  function login(payload, slug) {
     setToken(payload.token);
     setUser(payload.user);
     localStorage.setItem('token', payload.token);
+    if (slug) localStorage.setItem('tenantSlug', slug);
   }
 
   function logout() {
     setToken(null);
     setUser(null);
     localStorage.removeItem('token');
-    window.history.pushState({}, '', '/login');
+    localStorage.removeItem('tenantSlug');
+    navigate('/login');
+  }
+
+  function navigate(path) {
+    window.history.pushState({}, '', path);
     window.dispatchEvent(new PopStateEvent('popstate'));
   }
 
