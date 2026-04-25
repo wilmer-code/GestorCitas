@@ -18,6 +18,8 @@ export default function DashboardPage({ navigate }) {
   const { user, token, logout } = useAuth();
   const [clients, setClients] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [notes, setNotes] = useState([]);
+  const [newNote, setNewNote] = useState('');
   const [search, setSearch] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [visibleRange, setVisibleRange] = useState(null);
@@ -28,8 +30,6 @@ export default function DashboardPage({ navigate }) {
   const [filterClientId, setFilterClientId] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
-  const [notes, setNotes] = useState([]);
-  const [newNote, setNewNote] = useState('');
   const [calendarView, setCalendarView] = useState('dayGridMonth');
   const [tabActive, setTabActive] = useState('Citas');
   const [activeModule, setActiveModule] = useState('citas');
@@ -49,7 +49,7 @@ export default function DashboardPage({ navigate }) {
       const data = await api(url, { token });
       setClients(data);
       if (!selectedClientId && data[0]?.id) setSelectedClientId(data[0].id);
-    } catch (e) { console.error('Error cargando clientes', e.message); }
+    } catch (e) { console.error(e.message); }
   }
 
   async function loadAppointments() {
@@ -63,13 +63,20 @@ export default function DashboardPage({ navigate }) {
       if (filterStatus) params.set('status', filterStatus);
       const data = await api('/appointments?' + params.toString(), { token });
       setAppointments(data);
-    } catch (e) { console.error('Error cargando citas', e.message); }
+    } catch (e) { console.error(e.message); }
+  }
+
+  async function loadNotes(clientId) {
+    if (!clientId) { setNotes([]); return; }
+    try {
+      const data = await api('/notes?clientId=' + clientId, { token });
+      setNotes(data);
+    } catch (e) { console.error(e.message); }
   }
 
   useEffect(() => { loadClients(); }, []);
   useEffect(() => { loadAppointments(); }, [visibleRange, filterClientId, filterStatus]);
   useEffect(() => { loadNotes(selectedClientId); }, [selectedClientId]);
-
 
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
@@ -157,19 +164,19 @@ export default function DashboardPage({ navigate }) {
     } catch (e) { setError(e.message); }
   }
 
-  async function cancelAppointment(appointmentId) {
+  async function cancelAppointment(id) {
     if (!window.confirm('Cancelar esta cita?')) return;
     try {
-      await api('/appointments/' + appointmentId, { method: 'PUT', token, body: { status: 'CANCELLED' } });
+      await api('/appointments/' + id, { method: 'PUT', token, body: { status: 'CANCELLED' } });
       await loadAppointments();
       setModalOpen(false);
       setEditing(null);
     } catch (e) { setError(e.message); }
   }
 
-  async function reactivateAppointment(appointmentId) {
+  async function reactivateAppointment(id) {
     try {
-      const updated = await api('/appointments/' + appointmentId, { method: 'PUT', token, body: { status: 'PENDING' } });
+      const updated = await api('/appointments/' + id, { method: 'PUT', token, body: { status: 'PENDING' } });
       await loadAppointments();
       setEditing(updated);
     } catch (e) { setError(e.message); }
@@ -183,27 +190,6 @@ export default function DashboardPage({ navigate }) {
     } catch (e) { alert(e.message); }
   }
 
-  
-  async function loadNotes(clientId) {
-    try {
-      const data = await api('/notes?clientId=' + clientId, { token });
-      setNotes(data);
-    } catch (e) { console.error(e.message); }
-  }
-
-  async function createNote() {
-    try {
-      await api('/notes', { method: 'POST', token, body: { clientId: selectedClientId, content: newNote.trim() } });
-      setNewNote('');
-      await loadNotes(selectedClientId);
-    } catch (e) { alert(e.message); }
-  }
-
-  async function deleteNote(noteId) {
-    await api('/notes/' + noteId, { method: 'DELETE', token });
-    await loadNotes(selectedClientId);
-  }
-
   async function createClient() {
     if (!newClientName.trim()) return;
     try {
@@ -214,7 +200,7 @@ export default function DashboardPage({ navigate }) {
   }
 
   async function editClient(client) {
-    const nextName = window.prompt('Nuevo nombre del cliente', client.name);
+    const nextName = window.prompt('Nuevo nombre', client.name);
     if (!nextName?.trim()) return;
     await api('/clients/' + client.id, { method: 'PUT', token, body: { name: nextName.trim() } });
     await loadClients(search);
@@ -225,6 +211,20 @@ export default function DashboardPage({ navigate }) {
     await api('/clients/' + client.id, { method: 'DELETE', token });
     await loadClients(search);
     await loadAppointments();
+  }
+
+  async function createNote() {
+    if (!selectedClientId || !newNote.trim()) return;
+    try {
+      await api('/notes', { method: 'POST', token, body: { clientId: selectedClientId, content: newNote.trim() } });
+      setNewNote('');
+      await loadNotes(selectedClientId);
+    } catch (e) { alert(e.message); }
+  }
+
+  async function deleteNote(noteId) {
+    await api('/notes/' + noteId, { method: 'DELETE', token });
+    await loadNotes(selectedClientId);
   }
 
   const filteredAppointments = useMemo(() => {
@@ -250,6 +250,7 @@ export default function DashboardPage({ navigate }) {
   }, [dayAgenda, filteredAppointments, selectedClientId, tabActive]);
 
   const tenantName = user?.tenant?.name || localStorage.getItem('tenantSlug') || '';
+  const selectedClientName = clients.find((c) => c.id === selectedClientId)?.name || 'Ninguno';
 
   return (
     <div className="app-shell">
@@ -286,13 +287,13 @@ export default function DashboardPage({ navigate }) {
             </div>
 
             <div className="mock-filters">
-              <label htmlFor="filterClient" className="inline-label">Filtro cliente:</label>
-              <select id="filterClient" className="mock-select" value={filterClientId} onChange={(e) => setFilterClientId(e.target.value)}>
+              <label className="inline-label">Filtro cliente:</label>
+              <select className="mock-select" value={filterClientId} onChange={(e) => setFilterClientId(e.target.value)}>
                 <option value="">Todos</option>
                 {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <label htmlFor="filterStatus" className="inline-label">Estado:</label>
-              <select id="filterStatus" className="mock-select" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+              <label className="inline-label">Estado:</label>
+              <select className="mock-select" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
                 <option value="">Todos</option>
                 <option value="PENDING">Pendiente</option>
                 <option value="CONFIRMED">Confirmada</option>
@@ -419,19 +420,20 @@ export default function DashboardPage({ navigate }) {
 
                 <section className="inner-panel">
                   <h3 className="panel-title">Notas</h3>
-                  <p className="text-xs app-muted mb-2">
-                    Cliente: {clients.find((c) => c.id === selectedClientId)?.name || 'Ninguno'}
-                  </p>
+                  <p className="text-xs app-muted mb-2">Cliente: {selectedClientName}</p>
                   <textarea
                     className="app-input w-full mb-2"
                     rows="3"
                     placeholder={selectedClientId ? 'Escribe una nota...' : 'Selecciona un cliente'}
                     value={newNote}
                     onChange={(e) => setNewNote(e.target.value)}
+                    disabled={!selectedClientId}
                   />
+                  <button className="app-btn app-btn-primary mb-3" onClick={createNote} disabled={!selectedClientId}>
                     Guardar nota
                   </button>
                   <div className="space-y-2 max-h-56 overflow-auto">
+                    {notes.length === 0 && <p className="text-sm app-muted">Sin notas.</p>}
                     {notes.map((note) => (
                       <div key={note.id} className="app-list-item text-sm">
                         <p>{note.content}</p>
@@ -441,7 +443,6 @@ export default function DashboardPage({ navigate }) {
                         </div>
                       </div>
                     ))}
-                    {notes.length === 0 && <p className="text-sm app-muted">Sin notas.</p>}
                   </div>
                 </section>
               </aside>
