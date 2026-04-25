@@ -8,21 +8,11 @@ import { api } from '../api';
 import AppointmentModal from '../components/AppointmentModal';
 
 const THEME_KEY = 'theme';
+const STATUS_LABELS = { PENDING: 'Pendiente', CONFIRMED: 'Confirmada', CANCELLED: 'Cancelada', COMPLETED: 'Completada' };
 
 function sameDay(a, b) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
-
-const STATUS_LABELS = {
-  PENDING: 'Pendiente',
-  CONFIRMED: 'Confirmada',
-  CANCELLED: 'Cancelada',
-  COMPLETED: 'Completada'
-};
 
 export default function DashboardPage({ navigate }) {
   const { user, token, logout } = useAuth();
@@ -50,14 +40,14 @@ export default function DashboardPage({ navigate }) {
   const weekMenuRef = useRef(null);
   const splitMenuRef = useRef(null);
 
-  async function loadClients(query = '') {
+  async function loadClients(query) {
     try {
-      const data = await api(\`/clients\${query ? \`?q=\${encodeURIComponent(query)}\` : ''}\`, { token });
+      const q = query || '';
+      const url = q ? '/clients?q=' + encodeURIComponent(q) : '/clients';
+      const data = await api(url, { token });
       setClients(data);
       if (!selectedClientId && data[0]?.id) setSelectedClientId(data[0].id);
-    } catch (e) {
-      console.error('Error cargando clientes', e.message);
-    }
+    } catch (e) { console.error('Error cargando clientes', e.message); }
   }
 
   async function loadAppointments() {
@@ -66,16 +56,12 @@ export default function DashboardPage({ navigate }) {
       const fallbackEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59);
       const start = (visibleRange?.start || fallbackStart).toISOString();
       const end = visibleRange?.end ? new Date(visibleRange.end.getTime() - 1).toISOString() : fallbackEnd.toISOString();
-
       const params = new URLSearchParams({ start, end });
       if (filterClientId) params.set('clientId', filterClientId);
       if (filterStatus) params.set('status', filterStatus);
-
-      const data = await api(\`/appointments?\${params.toString()}\`, { token });
+      const data = await api('/appointments?' + params.toString(), { token });
       setAppointments(data);
-    } catch (e) {
-      console.error('Error cargando citas', e.message);
-    }
+    } catch (e) { console.error('Error cargando citas', e.message); }
   }
 
   useEffect(() => { loadClients(); }, []);
@@ -103,57 +89,51 @@ export default function DashboardPage({ navigate }) {
       if (weekMenuOpen && weekMenuRef.current && !weekMenuRef.current.contains(e.target)) setWeekMenuOpen(false);
       if (splitMenuOpen && splitMenuRef.current && !splitMenuRef.current.contains(e.target)) setSplitMenuOpen(false);
     }
-    function handleEsc(e) {
-      if (e.key === 'Escape') { setWeekMenuOpen(false); setSplitMenuOpen(false); }
-    }
+    function handleEsc(e) { if (e.key === 'Escape') { setWeekMenuOpen(false); setSplitMenuOpen(false); } }
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleEsc);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEsc);
-    };
+    return () => { document.removeEventListener('mousedown', handleClickOutside); document.removeEventListener('keydown', handleEsc); };
   }, [weekMenuOpen, splitMenuOpen]);
 
   const dayAgenda = useMemo(() =>
-    appointments
-      .filter((a) => sameDay(new Date(a.startTime), selectedDate))
+    appointments.filter((a) => sameDay(new Date(a.startTime), selectedDate))
       .sort((a, b) => new Date(a.startTime) - new Date(b.startTime)),
     [appointments, selectedDate]
   );
 
   const events = appointments.map((a) => ({
     id: String(a.id),
-    title: \`\${a.client?.name || 'Cliente'}\${a.status === 'CANCELLED' ? ' (cancelada)' : ''}\`,
+    title: (a.client?.name || 'Cliente') + (a.status === 'CANCELLED' ? ' (cancelada)' : ''),
     start: a.startTime,
     end: a.endTime,
     color: a.status === 'CANCELLED' ? '#ef4444' : a.status === 'COMPLETED' ? '#22c55e' : '#3b82f6'
   }));
 
   function syncViewTitle() {
-    const api = calendarRef.current?.getApi();
-    if (api) setViewTitle(api.view.title || '');
+    const calApi = calendarRef.current?.getApi();
+    if (calApi) setViewTitle(calApi.view.title || '');
   }
 
   function changeCalendarView(viewName) {
     setCalendarView(viewName);
-    const cal = calendarRef.current?.getApi();
-    if (cal) { cal.changeView(viewName); syncViewTitle(); }
+    const calApi = calendarRef.current?.getApi();
+    if (calApi) { calApi.changeView(viewName); syncViewTitle(); }
   }
 
   function navigateCalendar(action) {
-    const cal = calendarRef.current?.getApi();
-    if (!cal) return;
-    if (action === 'today') cal.today();
-    if (action === 'prev') cal.prev();
-    if (action === 'next') cal.next();
+    const calApi = calendarRef.current?.getApi();
+    if (!calApi) return;
+    if (action === 'today') calApi.today();
+    if (action === 'prev') calApi.prev();
+    if (action === 'next') calApi.next();
     syncViewTitle();
   }
 
   function selectWeekMode(mode) {
-    const cal = calendarRef.current?.getApi();
-    if (!cal) return;
-    cal.setOption('weekends', mode === 'fullweek');
-    cal.changeView('timeGridWeek');
+    const calApi = calendarRef.current?.getApi();
+    if (!calApi) return;
+    calApi.setOption('weekends', mode === 'fullweek');
+    calApi.changeView('timeGridWeek');
     setWeekMode(mode);
     setCalendarView('timeGridWeek');
     setWeekMenuOpen(false);
@@ -163,22 +143,20 @@ export default function DashboardPage({ navigate }) {
     setError('');
     try {
       if (editing) {
-        await api(\`/appointments/\${editing.id}\`, { method: 'PUT', token, body: payload });
+        await api('/appointments/' + editing.id, { method: 'PUT', token, body: payload });
       } else {
         await api('/appointments', { method: 'POST', token, body: payload });
       }
       await loadAppointments();
       setModalOpen(false);
       setEditing(null);
-    } catch (e) {
-      setError(e.message);
-    }
+    } catch (e) { setError(e.message); }
   }
 
   async function cancelAppointment(appointmentId) {
     if (!window.confirm('Cancelar esta cita?')) return;
     try {
-      await api(\`/appointments/\${appointmentId}\`, { method: 'PUT', token, body: { status: 'CANCELLED' } });
+      await api('/appointments/' + appointmentId, { method: 'PUT', token, body: { status: 'CANCELLED' } });
       await loadAppointments();
       setModalOpen(false);
       setEditing(null);
@@ -187,7 +165,7 @@ export default function DashboardPage({ navigate }) {
 
   async function reactivateAppointment(appointmentId) {
     try {
-      const updated = await api(\`/appointments/\${appointmentId}\`, { method: 'PUT', token, body: { status: 'PENDING' } });
+      const updated = await api('/appointments/' + appointmentId, { method: 'PUT', token, body: { status: 'PENDING' } });
       await loadAppointments();
       setEditing(updated);
     } catch (e) { setError(e.message); }
@@ -213,13 +191,13 @@ export default function DashboardPage({ navigate }) {
   async function editClient(client) {
     const nextName = window.prompt('Nuevo nombre del cliente', client.name);
     if (!nextName?.trim()) return;
-    await api(\`/clients/\${client.id}\`, { method: 'PUT', token, body: { name: nextName.trim() } });
+    await api('/clients/' + client.id, { method: 'PUT', token, body: { name: nextName.trim() } });
     await loadClients(search);
   }
 
   async function deleteClient(client) {
-    if (!window.confirm(\`Eliminar cliente \${client.name}?\`)) return;
-    await api(\`/clients/\${client.id}\`, { method: 'DELETE', token });
+    if (!window.confirm('Eliminar cliente ' + client.name + '?')) return;
+    await api('/clients/' + client.id, { method: 'DELETE', token });
     await loadClients(search);
     await loadAppointments();
   }
@@ -246,23 +224,23 @@ export default function DashboardPage({ navigate }) {
     return dayAgenda.filter((a) => ids.has(String(a.id)));
   }, [dayAgenda, filteredAppointments, selectedClientId, tabActive]);
 
+  const tenantName = user?.tenant?.name || localStorage.getItem('tenantSlug') || '';
+
   return (
     <div className="app-shell">
       <div className="mock-window">
         <header className="mock-window-bar app-topbar">
           <div>
             <h1 className="app-title">Citio</h1>
-            <p className="app-subtitle">{user?.name} — {user?.tenant?.name || localStorage.getItem('tenantSlug')}</p>
+            <p className="app-subtitle">{user?.name} — {tenantName}</p>
           </div>
           <div className="app-topbar-actions">
             {user?.role === 'ADMIN' && (
-              <button className="topbar-btn topbar-btn--ghost" onClick={() => navigate('/admin/users')}>
-                Admin usuarios
-              </button>
+              <button className="topbar-btn topbar-btn--ghost" onClick={() => navigate('/admin/users')}>Admin usuarios</button>
             )}
             <div className="topbar-group">
-              <button className={`topbar-btn \${theme === 'light' ? 'topbar-btn--active' : 'topbar-btn--ghost'}`} onClick={() => setTheme('light')}>Claro</button>
-              <button className={`topbar-btn \${theme === 'dark' ? 'topbar-btn--active' : 'topbar-btn--ghost'}`} onClick={() => setTheme('dark')}>Oscuro</button>
+              <button className={'topbar-btn ' + (theme === 'light' ? 'topbar-btn--active' : 'topbar-btn--ghost')} onClick={() => setTheme('light')}>Claro</button>
+              <button className={'topbar-btn ' + (theme === 'dark' ? 'topbar-btn--active' : 'topbar-btn--ghost')} onClick={() => setTheme('dark')}>Oscuro</button>
               <button className="topbar-btn topbar-btn--ghost" onClick={logout}>Salir</button>
             </div>
           </div>
@@ -275,7 +253,7 @@ export default function DashboardPage({ navigate }) {
                 <h2 className="calendar-title">Calendario</h2>
                 <div className="mock-tabs">
                   {['Clientes', 'Citas', 'Seguimiento', 'Recordatorios'].map((tab) => (
-                    <button key={tab} className={`mock-tab \${tabActive === tab ? 'mock-tab--active' : ''}`}
+                    <button key={tab} className={'mock-tab ' + (tabActive === tab ? 'mock-tab--active' : '')}
                       onClick={() => setActiveModule(tab.toLowerCase())} type="button">{tab}</button>
                   ))}
                 </div>
@@ -301,19 +279,19 @@ export default function DashboardPage({ navigate }) {
             <div className="mock-toolbar">
               <div className="mock-btnbar">
                 <button className="mock-btn" onClick={() => navigateCalendar('today')}>Hoy</button>
-                <button className={`mock-btn \${calendarView === 'dayGridMonth' ? 'mock-btn--active' : ''}`} onClick={() => changeCalendarView('dayGridMonth')}>Mes</button>
+                <button className={'mock-btn ' + (calendarView === 'dayGridMonth' ? 'mock-btn--active' : '')} onClick={() => changeCalendarView('dayGridMonth')}>Mes</button>
                 <div className="relative" ref={weekMenuRef}>
-                  <button className={`mock-btn \${calendarView === 'timeGridWeek' ? 'mock-btn--active' : ''}`} onClick={() => setWeekMenuOpen((v) => !v)}>
+                  <button className={'mock-btn ' + (calendarView === 'timeGridWeek' ? 'mock-btn--active' : '')} onClick={() => setWeekMenuOpen((v) => !v)}>
                     Semana <span className="split-caret split-caret--sm" />
                   </button>
                   {weekMenuOpen && (
                     <div className="absolute top-[44px] left-0 z-30 min-w-[210px] rounded-md border bg-white shadow-lg p-1">
-                      <button className={`w-full text-left px-3 py-2 rounded text-sm \${weekMode === 'workweek' ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-100'}`} onClick={() => selectWeekMode('workweek')} type="button">Semana laboral (L-V)</button>
-                      <button className={`w-full text-left px-3 py-2 rounded text-sm \${weekMode === 'fullweek' ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-100'}`} onClick={() => selectWeekMode('fullweek')} type="button">Semana completa (L-D)</button>
+                      <button className={'w-full text-left px-3 py-2 rounded text-sm ' + (weekMode === 'workweek' ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-100')} onClick={() => selectWeekMode('workweek')} type="button">Semana laboral (L-V)</button>
+                      <button className={'w-full text-left px-3 py-2 rounded text-sm ' + (weekMode === 'fullweek' ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-100')} onClick={() => selectWeekMode('fullweek')} type="button">Semana completa (L-D)</button>
                     </div>
                   )}
                 </div>
-                <button className={`mock-btn \${calendarView === 'timeGridDay' ? 'mock-btn--active' : ''}`} onClick={() => changeCalendarView('timeGridDay')}>Dia</button>
+                <button className={'mock-btn ' + (calendarView === 'timeGridDay' ? 'mock-btn--active' : '')} onClick={() => changeCalendarView('timeGridDay')}>Dia</button>
               </div>
               <div className="calendar-title-center">{viewTitle}</div>
               <div className="right-toolbar">
@@ -394,7 +372,7 @@ export default function DashboardPage({ navigate }) {
                     {clients.map((c) => {
                       const isSelected = selectedClientId === c.id;
                       return (
-                        <li key={c.id} className={`client-item cursor-pointer \${isSelected ? 'client-item--active' : ''}`} onClick={() => setSelectedClientId(c.id)}>
+                        <li key={c.id} className={'client-item cursor-pointer ' + (isSelected ? 'client-item--active' : '')} onClick={() => setSelectedClientId(c.id)}>
                           <div className="client-row">
                             <div className="client-name">{c.name}</div>
                             <div className="client-right">
@@ -403,7 +381,11 @@ export default function DashboardPage({ navigate }) {
                               {isSelected && <span className="client-check">✓</span>}
                             </div>
                           </div>
-                          {c.tags?.length > 0 && <div className="flex gap-1 mt-1">{c.tags.map((t) => <span key={t} className="text-xs bg-blue-100 text-blue-700 px-1 rounded">{t}</span>)}</div>}
+                          {c.tags?.length > 0 && (
+                            <div className="flex gap-1 mt-1">
+                              {c.tags.map((t) => <span key={t} className="text-xs bg-blue-100 text-blue-700 px-1 rounded">{t}</span>)}
+                            </div>
+                          )}
                         </li>
                       );
                     })}
