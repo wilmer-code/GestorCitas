@@ -8,6 +8,7 @@ const appointmentsRoutes = require('./routes/appointments.routes')
 const remindersRoutes = require('./routes/reminders.routes')
 const tenantsRoutes = require('./routes/tenants.routes')
 const notesRoutes = require('./routes/notes.routes')
+const billingRoutes = require('./routes/billing.routes')
 const { tenantMiddleware } = require('./middleware/tenant')
 const { checkAppointmentLimit } = require('./middleware/planLimits')
 
@@ -19,11 +20,15 @@ app.use(cors({
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-Tenant-Slug']
 }))
 
+// Webhook necesita body raw
+app.post('/billing/webhook', express.raw({ type: 'application/json' }), require('./routes/billing.routes').single || ((req, _res, next) => { next() }))
+
 app.use(express.json())
 
 app.get('/health', (_req, res) => res.json({ ok: true }))
 
 app.use('/tenants', tenantsRoutes)
+app.use('/billing', billingRoutes)
 
 app.use(tenantMiddleware)
 app.use('/auth', authRoutes)
