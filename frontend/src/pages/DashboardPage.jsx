@@ -28,6 +28,8 @@ export default function DashboardPage({ navigate }) {
   const [filterClientId, setFilterClientId] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
+  const [notes, setNotes] = useState([]);
+  const [newNote, setNewNote] = useState('');
   const [calendarView, setCalendarView] = useState('dayGridMonth');
   const [tabActive, setTabActive] = useState('Citas');
   const [activeModule, setActiveModule] = useState('citas');
@@ -66,6 +68,8 @@ export default function DashboardPage({ navigate }) {
 
   useEffect(() => { loadClients(); }, []);
   useEffect(() => { loadAppointments(); }, [visibleRange, filterClientId, filterStatus]);
+  useEffect(() => { loadNotes(selectedClientId); }, [selectedClientId]);
+
 
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
@@ -177,6 +181,27 @@ export default function DashboardPage({ navigate }) {
       alert('Recordatorio creado');
       await loadAppointments();
     } catch (e) { alert(e.message); }
+  }
+
+  
+  async function loadNotes(clientId) {
+    try {
+      const data = await api('/notes?clientId=' + clientId, { token });
+      setNotes(data);
+    } catch (e) { console.error(e.message); }
+  }
+
+  async function createNote() {
+    try {
+      await api('/notes', { method: 'POST', token, body: { clientId: selectedClientId, content: newNote.trim() } });
+      setNewNote('');
+      await loadNotes(selectedClientId);
+    } catch (e) { alert(e.message); }
+  }
+
+  async function deleteNote(noteId) {
+    await api('/notes/' + noteId, { method: 'DELETE', token });
+    await loadNotes(selectedClientId);
   }
 
   async function createClient() {
@@ -390,6 +415,34 @@ export default function DashboardPage({ navigate }) {
                       );
                     })}
                   </ul>
+                </section>
+
+                <section className="inner-panel">
+                  <h3 className="panel-title">Notas</h3>
+                  <p className="text-xs app-muted mb-2">
+                    Cliente: {clients.find((c) => c.id === selectedClientId)?.name || 'Ninguno'}
+                  </p>
+                  <textarea
+                    className="app-input w-full mb-2"
+                    rows="3"
+                    placeholder={selectedClientId ? 'Escribe una nota...' : 'Selecciona un cliente'}
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                  />
+                    Guardar nota
+                  </button>
+                  <div className="space-y-2 max-h-56 overflow-auto">
+                    {notes.map((note) => (
+                      <div key={note.id} className="app-list-item text-sm">
+                        <p>{note.content}</p>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-xs app-muted">{new Date(note.createdAt).toLocaleString()}</span>
+                          <button className="text-red-600 text-xs" onClick={() => deleteNote(note.id)}>Eliminar</button>
+                        </div>
+                      </div>
+                    ))}
+                    {notes.length === 0 && <p className="text-sm app-muted">Sin notas.</p>}
+                  </div>
                 </section>
               </aside>
             </div>

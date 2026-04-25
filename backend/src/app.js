@@ -7,7 +7,9 @@ const clientsRoutes = require('./routes/clients.routes')
 const appointmentsRoutes = require('./routes/appointments.routes')
 const remindersRoutes = require('./routes/reminders.routes')
 const tenantsRoutes = require('./routes/tenants.routes')
+const notesRoutes = require('./routes/notes.routes')
 const { tenantMiddleware } = require('./middleware/tenant')
+const { checkAppointmentLimit } = require('./middleware/planLimits')
 
 const app = express()
 
@@ -27,8 +29,9 @@ app.use(tenantMiddleware)
 app.use('/auth', authRoutes)
 app.use('/users', usersRoutes)
 app.use('/clients', clientsRoutes)
-app.use('/appointments', appointmentsRoutes)
+app.use('/appointments', checkAppointmentLimit, appointmentsRoutes)
 app.use('/reminders', remindersRoutes)
+app.use('/notes', notesRoutes)
 
 setupSwagger(app)
 
