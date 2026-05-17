@@ -11,8 +11,8 @@ router.use(authRequired)
 const appointmentSchema = z.object({
   clientId: z.string().uuid(),
   title: z.string().min(2).max(100),
-  startTime: z.string().datetime(),
-  endTime: z.string().datetime(),
+  startTime: z.string().datetime({ offset: true }),
+  endTime: z.string().datetime({ offset: true }),
   status: z.enum(['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED']).optional(),
   notes: z.string().max(500).optional()
 })
