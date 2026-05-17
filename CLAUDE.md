@@ -114,6 +114,26 @@ PostgreSQL 16. ORM: Prisma 5. IDs: UUIDs (`TEXT` en Prisma). Convención de nomb
 
 ## Operativa en el VPS
 
+### Gestión de procesos en el VPS
+
+El backend y el frontend corren bajo **pm2** en producción — nunca con `node` a pelo.
+
+| Proceso | pm2 name | pm2 id | Puerto |
+|---|---|---|---|
+| Backend (Express) | `citio-backend` | 0 | :3000 |
+| Frontend (Vite preview) | `citio-frontend` | 2 | :4173 |
+
+```bash
+pm2 restart citio-backend    # reiniciar backend tras cambios de código
+pm2 restart citio-frontend   # reiniciar frontend
+pm2 logs citio-backend       # logs en vivo del backend
+pm2 list                     # estado de todos los procesos
+```
+
+**NUNCA** usar `kill <pid> && node ... &` para reiniciar. pm2 detecta el kill y relanza el proceso por su cuenta, creando una race condition entre el proceso zombie y el nuevo.
+
+> **Nota:** Hay un proceso adicional `openclaw-node` corriendo en el VPS fuera de pm2. Su origen está pendiente de identificar — ver `NOTAS_PENDIENTES.md` cuando se haya investigado.
+
 ### Trabajo desde el VPS por SSH
 - El proyecto vive en `/home/dev/workspaces/gestorcitas` en el VPS (187.124.28.30, user `dev`).
 - Para editar archivos largos vía SSH sin que se rompa el shell con comillas o backticks, usar heredoc con delimitador entre comillas simples:

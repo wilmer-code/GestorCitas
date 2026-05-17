@@ -112,3 +112,38 @@ npx prisma migrate resolve --applied <timestamp>_add_stripe_fields_to_tenant
 ```
 
 Esto sincroniza el historial de migraciones con el estado real de la DB sin riesgo de duplicar columnas.
+
+---
+
+## Campo `sendAt` en reminders sin soporte de offset de timezone
+
+### Descripción del problema
+
+`backend/src/routes/reminders.routes.js:12` valida el campo `sendAt` con:
+
+```js
+sendAt: z.string().datetime(),
+```
+
+Zod 3.23.x con `.datetime()` sin opciones solo acepta strings UTC con sufijo `Z`. Cualquier datetime con offset de timezone explícito (ej. `+02:00` en verano, `+01:00` en invierno) es rechazado con 400 "Datos inválidos" antes de llegar al handler.
+
+Este es el mismo patrón que causó el bug documentado en las citas (`startTime`/`endTime`), corregido el 2026-05-17 añadiendo `{ offset: true }`. El fix se aplicó solo en `appointments.routes.js` — `reminders.routes.js` quedó sin corregir.
+
+### Impacto potencial
+
+- Cualquier cliente que envíe `sendAt` en hora local de Madrid (con offset `+02:00` o `+01:00`) recibirá un 400 inesperado al intentar crear un recordatorio.
+- Si el frontend construye el datetime del recordatorio a partir de la hora de la cita (que ya acepta offsets tras el fix de appointments), la inconsistencia entre endpoints generará errores intermitentes difíciles de reproducir.
+
+### Posible solución
+
+Aplicar el mismo fix que en appointments: cambiar en `reminders.routes.js:12`:
+
+```js
+// antes
+sendAt: z.string().datetime(),
+
+// después
+sendAt: z.string().datetime({ offset: true }),
+```
+
+Reiniciar el backend con `pm2 restart citio-backend` tras el cambio.
