@@ -147,3 +147,52 @@ sendAt: z.string().datetime({ offset: true }),
 ```
 
 Reiniciar el backend con `pm2 restart citio-backend` tras el cambio.
+
+---
+
+## `tenantMiddleware` no resuelve `req.tenantId` para el slug `localhost`
+
+### Descripción del problema
+
+`backend/src/middleware/tenant.js:7-10` tiene un caso especial para slugs ambiguos en entorno local:
+
+```js
+if (!slug || slug === 'localhost' || slug === '187') {
+  req.tenantSlug = 'demo'
+  return next()
+}
+```
+
+Cuando el cliente envía `X-Tenant-Slug: localhost`, el middleware setea `req.tenantSlug = 'demo'` y llama a `next()` **sin consultar la base de datos**, lo que significa que `req.tenant` y `req.tenantId` quedan `undefined`.
+
+El código del camino normal (slug real) sí setea ambos:
+```js
+req.tenant = tenant
+req.tenantId = tenant.id
+```
+
+El middleware debería resolver el tenant `demo` desde la DB — igual que hace con cualquier otro slug — y poblar `req.tenant` y `req.tenantId` antes de pasar al siguiente handler.
+
+### Impacto potencial
+
+- **`POST /auth/login`** falla con 500: el handler usa `req.tenantId` para construir la cláusula `where` de Prisma. Con `tenantId = undefined`, la query es `findUnique({ where: { email } })`, pero `email` no tiene índice único propio (solo `@@unique([tenantId, email])`), por lo que Prisma lanza un error interno.
+- Cualquier otra ruta que dependa de `req.tenantId` (appointments, clients, notes, users) puede fallar silenciosamente o con 500 cuando se prueba desde entorno local usando `X-Tenant-Slug: localhost`.
+- El problema afecta especialmente a entornos de desarrollo y pruebas manuales con curl, donde `localhost` es el valor natural de `X-Tenant-Slug`.
+
+### Posible solución
+
+Reemplazar el cortocircuito actual por una resolución real del slug `demo` desde la DB:
+
+```js
+if (!slug || slug === 'localhost' || slug === '187') {
+  const tenant = await prisma.tenant.findUnique({ where: { slug: 'demo', active: true } })
+  if (tenant) {
+    req.tenant = tenant
+    req.tenantId = tenant.id
+  }
+  req.tenantSlug = 'demo'
+  return next()
+}
+```
+
+Esto mantiene la compatibilidad con entornos donde el tenant `demo` no existe (el bloque sigue siendo no-fatal) y evita que `req.tenantId` quede `undefined` cuando sí existe.
