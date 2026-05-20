@@ -1,6 +1,6 @@
 # Notas Pendientes
 
-## Tabla `notes` ausente en migración multitenant
+## ✅ RESUELTA — Tabla `notes` ausente en migración multitenant
 
 ### Descripción del problema
 
@@ -40,6 +40,10 @@ ALTER TABLE "notes" ADD CONSTRAINT "notes_user_id_fkey"
 ```
 
 O bien, ejecutar `prisma migrate dev --name add_notes_table` para que Prisma genere la migración automáticamente comparando el schema contra el estado real de la DB.
+
+### Resolución
+
+Resuelta el 2026-05-20 con migración manual `20260520205051_add_notes_table` aplicada via `migrate resolve --applied`. Durante la resolución se descubrió que `backend/prisma/migrations/` estaba ignorado en `.gitignore` desde el primer commit del repo; se corrigió en el mismo bloque de trabajo. Las 5 migraciones pre-multitenant obsoletas se eliminaron del filesystem.
 
 ---
 
@@ -196,3 +200,41 @@ if (!slug || slug === 'localhost' || slug === '187') {
 ```
 
 Esto mantiene la compatibilidad con entornos donde el tenant `demo` no existe (el bloque sigue siendo no-fatal) y evita que `req.tenantId` quede `undefined` cuando sí existe.
+
+---
+
+## Falta indexar la tabla `notes`
+
+### Descripción del problema
+
+La tabla `notes` solo tiene el índice de clave primaria (`notes_pkey` sobre `id`). No existen índices adicionales sobre ninguna otra columna.
+
+### Impacto potencial
+
+Las queries típicas sobre notas filtran por `tenant_id` y/o `client_id` y ordenan por `created_at DESC`. Sin índices en esas columnas, cualquier consulta de este tipo provoca un seq scan sobre toda la tabla. Con volumen creciente de notas esto degradará progresivamente el rendimiento.
+
+### Posible solución
+
+Crear una migración futura con los siguientes índices:
+
+```sql
+CREATE INDEX "notes_tenant_id_idx" ON "notes"("tenant_id");
+CREATE INDEX "notes_client_id_idx" ON "notes"("client_id");
+CREATE INDEX "notes_tenant_id_created_at_idx" ON "notes"("tenant_id", "created_at" DESC);
+```
+
+---
+
+## Verificación end-to-end de migraciones pendiente
+
+### Descripción del problema
+
+Hasta el 2026-05-20, `backend/prisma/migrations/` estaba excluido de git mediante una línea en `.gitignore`. Esto significa que ningún entorno limpio ha aplicado las migraciones reales mediante `prisma migrate deploy`. La DB actual de producción se construyó via SQL manual o `db push`, no via `migrate deploy`.
+
+### Impacto potencial
+
+No hay garantía de que un deploy nuevo (otro VPS, otra máquina, staging, CI) produzca un schema idéntico al de producción actual. Las migraciones en disco (`20260419161652_multitenant_citio` y `20260520205051_add_notes_table`) son la mejor representación del schema esperado, pero no han sido validadas contra una DB limpia. El drift de los campos Stripe en `tenants` (entrada separada en este fichero) es un ejemplo concreto de este riesgo.
+
+### Posible solución
+
+En una sesión futura, levantar un PostgreSQL vacío en otro puerto, ejecutar `prisma migrate deploy`, comparar el schema resultante con producción via `pg_dump --schema-only` y diff. Resolver cualquier diferencia con migraciones complementarias antes de confiar en el historial para nuevos deploys.
