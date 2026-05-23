@@ -123,7 +123,7 @@ Resuelta el 2026-05-23 con migración manual `20260523082103_add_stripe_fields_t
 
 ---
 
-## Campo `sendAt` en reminders sin soporte de offset de timezone
+## ✅ RESUELTA — Campo `sendAt` en reminders sin soporte de offset de timezone
 
 ### Descripción del problema
 
@@ -155,6 +155,10 @@ sendAt: z.string().datetime({ offset: true }),
 ```
 
 Reiniciar el backend con `pm2 restart citio-backend` tras el cambio.
+
+### Resolución
+
+Resuelta el 2026-05-23 con el mismo fix aplicado a appointments en mayo (`z.string().datetime({ offset: true })`). Cambio puntual en `backend/src/routes/reminders.routes.js:12`. Backend reiniciado via pm2 restart citio-backend. Ver commit 60d35d6 para el cambio aplicado.
 
 ---
 
