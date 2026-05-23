@@ -246,3 +246,67 @@ No hay garantía de que un deploy nuevo (otro VPS, otra máquina, staging, CI) p
 ### Posible solución
 
 En una sesión futura, levantar un PostgreSQL vacío en otro puerto, ejecutar `prisma migrate deploy`, comparar el schema resultante con producción via `pg_dump --schema-only` y diff. Resolver cualquier diferencia con migraciones complementarias antes de confiar en el historial para nuevos deploys.
+
+---
+
+## ✅ COMPLETADO — Apagado controlado de OpenClaw
+
+### Contexto
+
+OpenClaw se montó en este VPS en marzo 2026 como prueba de framework de agentes/subagentes con bot de Telegram (`@wilmer_fiverr_bot`) para automatizar mejoras de perfil en Fiverr. Tras evaluación (sesión del 23 mayo 2026), se decide no continuar con OpenClaw por: (1) vulnerabilidades documentadas (paper de seguridad Texas A&M, feb 2026), (2) pérdida de acceso vía suscripción Claude, (3) caso de uso ya cubierto por Claude Code y la futura consola DevOps.
+
+### Estado del apagado
+
+Servicios systemd parados y deshabilitados:
+- `openclaw-gateway.service` → inactive, disabled
+- `openclaw-node.service` → inactive, disabled
+
+No estuvieron en pm2. Sin dependencias con Citio (`citio-backend` y `citio-frontend` siguen vivos sin referencias a openclaw).
+
+Detalle a investigar: el SIGTERM final llegó el 2026-05-23 a las 09:16:02 sin intervención manual explícita en esta sesión. La causa exacta no se ha confirmado. Hipotesis: (a) health-monitor de openclaw tras sucesivos stale-socket de Telegram, (b) restart pendiente del VPS (el MOTD mostraba 'System restart required' en sesiones anteriores), o (c) reset de proceso por systemd tras superar limites internos. El uptime actual del VPS (since 2026-03-09) sugiere que NO hubo reboot reciente, pero el origen exacto del SIGTERM queda sin determinar. Para una sesión futura: revisar journalctl con timestamps anteriores a 09:16:02 para encontrar la señal previa.
+
+### Archivos conservados
+
+| Ruta | Contenido |
+|---|---|
+| `/home/dev/openclaw-fiverr/` | Proyecto: `.env` (solo `TELEGRAM_BOT_TOKEN`), `config/`, `data/` (vacío), `logs/` (vacío) |
+| `/home/dev/.openclaw/` | Config principal: tokens de dispositivo, state de Telegram, workspace docs |
+| `/home/dev/.openclaw-gestorcitas/` | Config específica del workspace: sesiones, auth-profiles (OpenAI Codex OAuth) |
+| `/home/dev/.config/openclaw` | Ubicación XDG config |
+| `/home/dev/.openclaw.backup-2026-03-07-*/` | Tres snapshots de configuración del 7 de marzo 2026 |
+
+No hay credenciales de Gmail almacenadas en texto plano en ninguno de los directorios config. El `gmail-watcher` visible en los logs usaba credenciales del runtime de OpenClaw.
+
+### Pendientes de revocación
+
+Sin proceso corriendo, ninguno de estos tokens recibe tráfico. La revocación es defensa en profundidad para evitar que un acceso futuro al VPS comprometa cuentas externas. No urge.
+
+- **Token Telegram** (`@wilmer_fiverr_bot`): revocar manualmente en @BotFather (`/mybots` → seleccionar bot → API Token → Revoke current token).
+- **Credenciales OpenAI Codex** en `/home/dev/.openclaw-gestorcitas/agents/main/agent/auth-profiles.json`: tipo OAuth con `access` + `refresh` + `expires`. Si el `expires` ya pasó, el `access` ya no funciona pero el `refresh` puede seguir siendo válido. Revocar la sesión entera en https://platform.openai.com/account/sessions o equivalente.
+- **Credenciales de Gmail**: no almacenadas localmente en plain text. Si el runtime de OpenClaw las cacheaba en otro lugar, han caducado o se invalidan al pararse el proceso. No requiere acción explícita.
+### Re-arranque futuro (referencia para reactivación selectiva)
+
+Si en algún momento se decide reactivar OpenClaw para una tarea concreta:
+
+1. **Antes de re-arrancar**: revisar si la versión instalada tiene CVEs críticos pendientes (consultar el paper Texas A&M de feb 2026 sobre taxonomía de vulnerabilidades de OpenClaw, y CVE database). Actualizar a versión segura o decidir no re-arrancar.
+
+2. **Activar los servicios** (en este orden, gateway primero):
+
+       sudo systemctl enable openclaw-gateway.service openclaw-node.service
+       sudo systemctl start openclaw-gateway.service openclaw-node.service
+
+3. **Verificar conexión Telegram** en logs:
+
+       journalctl -u openclaw-gateway.service -f
+
+   Esperado: líneas tipo `[telegram] starting provider (@wilmer_fiverr_bot)` y luego silencio (sin errores).
+
+4. **Restringir a localhost** vía firewall si el caso de uso no requiere acceso externo (los puertos 18789-18792 ya estaban en 127.0.0.1, mantener así):
+
+       sudo ufw status verbose
+       sudo ufw deny 18789:18792/tcp
+
+5. **Verificar que no interfiere con Citio**:
+
+       pm2 list
+       curl -s http://localhost:3000/health
