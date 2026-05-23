@@ -13,7 +13,9 @@ model Tenant {
   slug      String   @unique
   email     String   @unique
   plan      Plan     @default(FREE)
-  active    Boolean  @default(true)
+  active              Boolean  @default(true)
+  stripeCustomerId    String?  @map("stripe_customer_id")
+  stripeSubscriptionId String? @map("stripe_subscription_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
