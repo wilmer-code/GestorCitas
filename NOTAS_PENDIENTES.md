@@ -71,7 +71,7 @@ El script `test-business-hours.sh` usa los campos `startAt`/`endAt` en el body d
 
 ---
 
-## Campos Stripe en Tenant ausentes en migraciones
+## ✅ RESUELTA — Campos Stripe en Tenant ausentes en migraciones
 
 ### Descripción del problema
 
@@ -116,6 +116,10 @@ npx prisma migrate resolve --applied <timestamp>_add_stripe_fields_to_tenant
 ```
 
 Esto sincroniza el historial de migraciones con el estado real de la DB sin riesgo de duplicar columnas.
+
+### Resolución
+
+Resuelta el 2026-05-23 con migración manual `20260523082103_add_stripe_fields_to_tenant` aplicada via `migrate resolve --applied` (Situación A del catálogo de prisma-migration-fix). Las dos columnas existían en la DB desde la integración de Stripe en abril 2026 pero nunca tuvieron migración asociada. Resolución idéntica al patrón del drift de notes (ver commit a5714cf como referencia histórica).
 
 ---
 
