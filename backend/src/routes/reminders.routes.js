@@ -9,7 +9,7 @@ router.use(authRequired)
 
 const reminderSchema = z.object({
   appointmentId: z.string().uuid(),
-  sendAt: z.string().datetime(),
+  sendAt: z.string().datetime({ offset: true }),
   message: z.string().max(500).optional()
 })
 
