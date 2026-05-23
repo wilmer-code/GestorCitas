@@ -140,15 +140,22 @@ git check-ignore -v backend/prisma/migrations/   # debe devolver exit 1 sin outp
 
 ## 5. Comandos de referencia
 
+> **IMPORTANTE:** NO intentes construir el comando de conexion parseando DATABASE_URL con sed/awk/regex. Usa los valores directamente como aparecen abajo. Si la conexion falla, lee backend/.env para verificar credenciales, no para construir comandos dinamicamente.
+
 ```bash
-# Conexión psql (leer DATABASE_URL de backend/.env)
-PGPASSWORD=<pass> psql -h <host> -p <puerto> -U <user> -d <db>
+# Conexión psql — credenciales del proyecto Citio (desarrollo local)
+PGPASSWORD=gestorcitas psql -h localhost -p 5433 -U gestorcitas -d gestorcitas -c "<query>"
 
 # DDL de una tabla
-psql ... -c "\d <tabla>"
+PGPASSWORD=gestorcitas psql -h localhost -p 5433 -U gestorcitas -d gestorcitas -c "\d <tabla>"
+
+# Historial de migraciones en la DB
+PGPASSWORD=gestorcitas psql -h localhost -p 5433 -U gestorcitas -d gestorcitas -c \
+  "SELECT migration_name, applied_steps_count FROM _prisma_migrations ORDER BY started_at;"
 
 # FKs con ON DELETE y ON UPDATE desde information_schema
-psql ... -c "SELECT tc.constraint_name, kcu.column_name, ccu.table_name,
+PGPASSWORD=gestorcitas psql -h localhost -p 5433 -U gestorcitas -d gestorcitas -c \
+  "SELECT tc.constraint_name, kcu.column_name, ccu.table_name,
   rc.delete_rule, rc.update_rule
   FROM information_schema.table_constraints tc
   JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
@@ -156,8 +163,9 @@ psql ... -c "SELECT tc.constraint_name, kcu.column_name, ccu.table_name,
   JOIN information_schema.referential_constraints rc ON tc.constraint_name = rc.constraint_name
   WHERE tc.table_name = '<tabla>' AND tc.constraint_type = 'FOREIGN KEY';"
 
-# Historial de migraciones en la DB
-psql ... -c "SELECT migration_name, applied_steps_count, finished_at, rolled_back_at FROM _prisma_migrations ORDER BY started_at;"
+# Historial completo con timestamps (para diagnóstico de migraciones fallidas)
+PGPASSWORD=gestorcitas psql -h localhost -p 5433 -U gestorcitas -d gestorcitas -c \
+  "SELECT migration_name, applied_steps_count, finished_at, rolled_back_at FROM _prisma_migrations ORDER BY started_at;"
 
 # Estado desde Prisma
 cd backend && npx prisma migrate status
